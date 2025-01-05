@@ -1,0 +1,24 @@
+services:
+  mineclonia:
+    build: .
+    container_name: minetest_mineclonia
+    restart: unless-stopped
+    ports:
+      - "30000:30000/udp"
+    volumes:
+      - ./worlds/mineclonia:/minetest/minetest/worlds/world
+      - ./config/mineclonia.conf:/minetest/minetest/config/minetest.conf
+    environment:
+      - GAME_TO_PLAY=mineclonia  # mineclonia can be played on port 30000
+
+  voxelibre:
+    build: .
+    container_name: minetest_voxelibre
+    restart: unless-stopped
+    ports:
+      - "30001:30000/udp"
+    volumes:
+      - ./worlds/voxelibre:/minetest/minetest/worlds/world
+      - ./config/voxelibre.conf:/minetest/minetest/config/minetest.conf
+    environment:
+      - GAME_TO_PLAY=voxelibre  # voxelibre can be played on port 30001
