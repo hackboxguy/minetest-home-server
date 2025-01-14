@@ -34,17 +34,12 @@ Follow these steps to set up the Minetest server:
    cd minetest-home-server
    ```
 
-6. Build the Docker container:
-   ```bash
-   docker-compose build
-   ```
-
-7. Start the server:
+6. Start the server:
    ```bash
    docker-compose up -d
    ```
 
-8. To Stop the server:
+7. To Stop the server:
    ```bash
    docker-compose down
    ```
