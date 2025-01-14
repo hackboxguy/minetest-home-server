@@ -5,7 +5,7 @@ This repository contains the necessary files to generate a Docker container for 
 - **Mineclonia** on port `30000`
 - **Voxelibre** on port `30001`
 
-## How to Download, Compile, and Deploy?
+## How to Download and Deploy?
 
 Follow these steps to set up the Minetest server:
 
@@ -59,7 +59,7 @@ Its an all-in-one setup ideal for families with kids who prefer to keep all play
 
 ### Secure Your Server
 
-Once your Minetest server is deployed and all users are registered via their Minetest clients, **it is recommended to disable further user registration** by adding **`disallow_empty_password = true`** in **`config/mineclonia.conf`** and **`config/voxelibre.conf`** files(after changing these conf files, stop and restart the server as shown in step 8 and 7 above)
+Once your Minetest server is deployed and all users are registered via their Minetest clients, **it is recommended to disable further user registration** by adding **`disallow_empty_password = true`** in **`config/mineclonia.conf`** and **`config/voxelibre.conf`** files(after changing these conf files, stop and restart the server as shown in step 7 and 6 above)
 
 ### Important Note
 
