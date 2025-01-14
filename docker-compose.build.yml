@@ -1,5 +1,6 @@
 services:
   mineclonia:
+    build: .
     image: hackboxguy/minetest-home-server:latest
     container_name: minetest_mineclonia
     restart: unless-stopped
@@ -12,6 +13,7 @@ services:
       - GAME_TO_PLAY=mineclonia  # mineclonia can be played on port 30000
 
   voxelibre:
+    build: .
     image: hackboxguy/minetest-home-server:latest
     container_name: minetest_voxelibre
     restart: unless-stopped
