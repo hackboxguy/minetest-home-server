@@ -1,24 +1,31 @@
+# Luanti Server Docker Compose - For End Users (Pre-built Image)
+# Just run: docker-compose up -d
+
 services:
   mineclonia:
-    image: hackboxguy/minetest-home-server:latest
-    container_name: minetest_mineclonia
+    image: hackboxguy/luanti-home-server:latest
+    container_name: luanti_mineclonia
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     ports:
       - "30000:30000/udp"
     volumes:
-      - ./worlds/mineclonia:/minetest/minetest/worlds/world
-      - ./config/mineclonia.conf:/minetest/minetest/config/minetest.conf
+      - ./worlds/mineclonia:/luanti/luanti/worlds/world
+      - ./config/mineclonia.conf:/luanti/luanti/config/luanti.conf
     environment:
-      - GAME_TO_PLAY=mineclonia  # mineclonia can be played on port 30000
+      - GAME_TO_PLAY=mineclonia
 
   voxelibre:
-    image: hackboxguy/minetest-home-server:latest
-    container_name: minetest_voxelibre
+    image: hackboxguy/luanti-home-server:latest
+    container_name: luanti_voxelibre
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     ports:
       - "30001:30000/udp"
     volumes:
-      - ./worlds/voxelibre:/minetest/minetest/worlds/world
-      - ./config/voxelibre.conf:/minetest/minetest/config/minetest.conf
+      - ./worlds/voxelibre:/luanti/luanti/worlds/world
+      - ./config/voxelibre.conf:/luanti/luanti/config/luanti.conf
     environment:
-      - GAME_TO_PLAY=voxelibre  # voxelibre can be played on port 30001
+      - GAME_TO_PLAY=voxelibre

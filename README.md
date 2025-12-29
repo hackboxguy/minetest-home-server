@@ -1,70 +1,118 @@
-# A Self-Sufficient/Self-Hosted Minetest Home Server
+# A Self-Sufficient/Self-Hosted Luanti Home Server
 
-This repository contains the necessary files to generate a Docker container for **Minetest server** that includes popular games, mods, and textures. The container builds the latest versions of Minetest and its corresponding mods, games, and textures from sources. It is configured to serve:
+This repository contains the necessary files to run a Docker container for **Luanti server** (formerly Minetest) that includes popular games, mods, and textures. The container runs Luanti 5.14 with the following games:
 
 - **Mineclonia** on port `30000`
-- **Voxelibre** on port `30001`
+- **VoxeLibre** on port `30001`
 
-## How to Download and Deploy?
+## Quick Start (Pre-built Image)
 
-Follow these steps to set up the Minetest server:
+```bash
+# Clone the repository
+git clone https://github.com/hackboxguy/minetest-home-server.git
+cd minetest-home-server
 
-1. Update the system package list:
-   ```bash
-   sudo apt-get update
-   ```
+# Start the server (pulls pre-built image from Docker Hub)
+docker-compose up -d
+```
 
-2. Install required dependencies:
-   ```bash
-   sudo apt-get install git docker.io docker-compose
-   ```
+## Build Locally (For Developers)
 
-3. Add your user to the Docker group (requires re-login to take effect):
-   ```bash
-   sudo usermod -aG docker $USER
-   ```
+If you want to build the Docker image yourself:
 
-4. Clone this repository:
-   ```bash
-   git clone https://github.com/hackboxguy/minetest-home-server.git
-   ```
-
-5. Navigate to the project directory:
-   ```bash
-   cd minetest-home-server
-   ```
-
-6. Start the server:
-   ```bash
-   docker-compose up -d
-   ```
-
-7. To Stop the server:
-   ```bash
-   docker-compose down
-   ```
-
+```bash
+docker-compose -f docker-compose.build.yml up -d --build
+```
 
 ## Connecting to the Server
 
-Multiple players can connect to the server at:
+Players can connect using the Luanti client:
 - `serverip:30000` for **Mineclonia**
-- `serverip:30001` for **Voxelibre**
+- `serverip:30001` for **VoxeLibre**
 
 Replace `serverip` with the actual IP address or domain name of your server.
 
+## Server Administration
+
+### Admin User Setup
+
+1. After starting the server, connect with the Luanti client
+2. Register the first user as **`admin`** and set a password
+3. The admin user has full privileges including: fly, teleport, kick, ban, weather control, etc.
+
+### Server Console Access
+
+You can access the server console for administration:
+
+```bash
+# Attach to Mineclonia server console
+docker attach luanti_mineclonia
+
+# Attach to VoxeLibre server console
+docker attach luanti_voxelibre
+```
+
+Type commands without `/` prefix (e.g., `status`, `grant player fly`).
+
+Detach with `Ctrl+P` then `Ctrl+Q`.
+
+### Useful Admin Commands
+
+| Command | Description |
+|---------|-------------|
+| `status` | Show server status and online players |
+| `grant <player> <privilege>` | Grant privilege to player |
+| `revoke <player> <privilege>` | Revoke privilege from player |
+| `privs <player>` | Show player's privileges |
+| `teleport <player1> <player2>` | Teleport player1 to player2 |
+| `weather clear/rain/thunder` | Change weather |
+| `kick <player>` | Kick player from server |
+| `ban <player>` | Ban player from server |
+
+## Security
+
+### Disable New Registrations
+
+New user registration is disabled by default (`disallow_empty_password = true`). To allow new registrations, edit the config files and set it to `false`:
+
+- `config/mineclonia.conf`
+- `config/voxelibre.conf`
+
+Then restart the server:
+```bash
+docker-compose restart
+```
+
+## Included Mods
+
+- **spectator_mode** - Spectate other players
+- **animalia** - Wildlife/fauna
+- **i3** - Inventory system
+- **3d_armor** - Armor system
+
+## Included Texture Packs
+
+- **Soothing 32** - 32x texture pack
+- **RPG 16** - 16x texture pack
+- **Less Dirt** - Texture adjustments
+
 ## Recommended for Families
 
-Its an all-in-one setup ideal for families with kids who prefer to keep all players within the home network boundary. 
+This is an all-in-one setup ideal for families with kids who prefer to keep all players within the home network boundary(offline - disconnected from the Internet).
 
-### Secure Your Server
+## Stopping the Server
 
-Once your Minetest server is deployed and all users are registered via their Minetest clients, **it is recommended to disable further user registration** by adding **`disallow_empty_password = true`** in **`config/mineclonia.conf`** and **`config/voxelibre.conf`** files(after changing these conf files, stop and restart the server as shown in step 7 and 6 above)
+```bash
+docker-compose down
+```
 
-### Important Note
+## Upgrading
 
-- **`config/mineclonia.conf`** and **`config/voxelibre.conf`** files includes a pre-configured **`admin`** user with all privileges.
-- After starting the Docker container, **register** first user as **`admin`** using the Minetest client and set a new password.
+To pull the latest version:
 
-Enjoy your Minetest gaming experience!
+```bash
+docker-compose pull
+docker-compose up -d
+```
 
+Enjoy your Luanti gaming experience!
