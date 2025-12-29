@@ -95,6 +95,37 @@ RUN wget https://github.com/minetest-mods/3d_armor/archive/refs/heads/master.zip
     mv 3d_armor-master 3d_armor && \
     rm 3d_armor.zip
 
+# SkinsDB - skin selection/customization
+RUN set -e; \
+    (wget -O skinsdb.zip https://github.com/minetest-mods/skinsdb/archive/refs/heads/master.zip || \
+     wget -O skinsdb.zip https://github.com/minetest-mods/skinsdb/archive/refs/heads/main.zip); \
+    unzip skinsdb.zip; \
+    mv skinsdb-* skinsdb; \
+    rm skinsdb.zip
+
+# Awards - achievements for players
+RUN set -e; \
+    (wget -O awards.zip https://github.com/minetest-mods/awards/archive/refs/heads/master.zip || \
+     wget -O awards.zip https://github.com/minetest-mods/awards/archive/refs/heads/main.zip); \
+    unzip awards.zip; \
+    mv awards-* awards; \
+    rm awards.zip
+
+# Protector - area/plot protection (ContentDB source for stability)
+RUN set -e; \
+    wget -O protector.zip https://content.minetest.net/packages/TenPlus1/protector/download/; \
+    unzip protector.zip; \
+    if [ -d protector ]; then :; else mv protector-* protector; fi; \
+    rm protector.zip
+
+# WorldEdit - building/admin tools (use upstream repo)
+RUN set -e; \
+    (wget -O worldedit.zip https://github.com/Uberi/Minetest-WorldEdit/archive/refs/heads/master.zip || \
+     wget -O worldedit.zip https://github.com/Uberi/Minetest-WorldEdit/archive/refs/heads/main.zip); \
+    unzip worldedit.zip; \
+    mv Minetest-WorldEdit-* worldedit; \
+    rm worldedit.zip
+
 # Download and install texture packs
 WORKDIR /luanti/luanti/textures
 
