@@ -126,33 +126,27 @@ RUN set -e; \
     mv Minetest-WorldEdit-* worldedit; \
     rm worldedit.zip
 
-<<<<<<< HEAD
-=======
-# Travelnet - simple portal network for bases/hubs
+# Travelnet - simple portal network for bases/hubs (moved to mt-mods org)
 RUN set -e; \
-    (wget -O travelnet.zip https://github.com/minetest-mods/travelnet/archive/refs/heads/master.zip || \
-     wget -O travelnet.zip https://github.com/minetest-mods/travelnet/archive/refs/heads/main.zip); \
+    wget -O travelnet.zip https://github.com/mt-mods/travelnet/archive/refs/heads/master.zip; \
     unzip travelnet.zip; \
     mv travelnet-* travelnet; \
     rm travelnet.zip
 
-# Lootchests - randomized treasure chests for events/exploration
+# Lootchests Modpack - randomized treasure chests (from ContentDB)
 RUN set -e; \
-    (wget -O lootchests.zip https://github.com/minetest-mods/lootchests/archive/refs/heads/master.zip || \
-     wget -O lootchests.zip https://github.com/minetest-mods/lootchests/archive/refs/heads/main.zip); \
+    wget -O lootchests.zip https://content.luanti.org/packages/mt-mods/lootchest_modpack/download/; \
     unzip lootchests.zip; \
-    mv lootchests-* lootchests; \
+    if [ -d lootchest_modpack ]; then mv lootchest_modpack lootchests; elif [ ! -d lootchests ]; then mv lootchest* lootchests; fi; \
     rm lootchests.zip
 
-# Ambience - ambient sounds for atmosphere
+# Ambience - ambient sounds for atmosphere (from ContentDB, maintained by TenPlus1)
 RUN set -e; \
-    (wget -O ambience.zip https://github.com/minetest-mods/ambience/archive/refs/heads/master.zip || \
-     wget -O ambience.zip https://github.com/minetest-mods/ambience/archive/refs/heads/main.zip); \
+    wget -O ambience.zip https://content.luanti.org/packages/TenPlus1/ambience/download/; \
     unzip ambience.zip; \
-    mv ambience-* ambience; \
+    if [ -d ambience ]; then :; else mv ambience-* ambience 2>/dev/null || mv TenPlus1-ambience* ambience; fi; \
     rm ambience.zip
 
->>>>>>> b30f8d1 (improved with more add-ons from codex session)
 # Download and install texture packs
 WORKDIR /luanti/luanti/textures
 
