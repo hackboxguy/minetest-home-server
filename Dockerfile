@@ -126,6 +126,33 @@ RUN set -e; \
     mv Minetest-WorldEdit-* worldedit; \
     rm worldedit.zip
 
+<<<<<<< HEAD
+=======
+# Travelnet - simple portal network for bases/hubs
+RUN set -e; \
+    (wget -O travelnet.zip https://github.com/minetest-mods/travelnet/archive/refs/heads/master.zip || \
+     wget -O travelnet.zip https://github.com/minetest-mods/travelnet/archive/refs/heads/main.zip); \
+    unzip travelnet.zip; \
+    mv travelnet-* travelnet; \
+    rm travelnet.zip
+
+# Lootchests - randomized treasure chests for events/exploration
+RUN set -e; \
+    (wget -O lootchests.zip https://github.com/minetest-mods/lootchests/archive/refs/heads/master.zip || \
+     wget -O lootchests.zip https://github.com/minetest-mods/lootchests/archive/refs/heads/main.zip); \
+    unzip lootchests.zip; \
+    mv lootchests-* lootchests; \
+    rm lootchests.zip
+
+# Ambience - ambient sounds for atmosphere
+RUN set -e; \
+    (wget -O ambience.zip https://github.com/minetest-mods/ambience/archive/refs/heads/master.zip || \
+     wget -O ambience.zip https://github.com/minetest-mods/ambience/archive/refs/heads/main.zip); \
+    unzip ambience.zip; \
+    mv ambience-* ambience; \
+    rm ambience.zip
+
+>>>>>>> b30f8d1 (improved with more add-ons from codex session)
 # Download and install texture packs
 WORKDIR /luanti/luanti/textures
 

@@ -1,7 +1,10 @@
-# A Self-Sufficient/Self-Hosted Luanti Home Server
+# Offline-Friendly Luanti Home Server (Mineclonia/VoxeLibre)
 
-This repository contains the necessary files to run a Docker container for **Luanti server** (formerly Minetest) that includes popular games, mods, and textures. The container runs Luanti 5.14 with the following games:
+Run a self-hosted, Minecraft-like server for your family—entirely offline—using Docker. Ships Luanti 5.14 plus Mineclone-style games and curated mods/texture packs. One small PC/NAS runs the containers; kids connect from Linux/Windows with the Luanti client over your home LAN (no Microsoft/Mojang accounts or Internet needed).
 
+![Offline Luanti home server diagram](images/luanti-game-server.png)
+
+Included games:
 - **Mineclonia** on port `30000`
 - **VoxeLibre** on port `30001`
 
@@ -22,6 +25,12 @@ If you want to build the Docker image yourself:
 
 ```bash
 docker-compose -f docker-compose.build.yml up -d --build
+```
+
+After building locally, you can also run with the standard compose file by tagging:
+```bash
+docker tag luanti-home-server:latest hackboxguy/luanti-home-server:latest
+docker-compose up -d
 ```
 
 ## Connecting to the Server
@@ -89,6 +98,13 @@ docker-compose restart
 - **animalia** - Wildlife/fauna
 - **i3** - Inventory system
 - **3d_armor** - Armor system
+- **skinsdb** - Player skins
+- **awards** - Achievement popups/goals
+- **protector** - Plot protection
+- **worldedit** - Admin building tools
+- **travelnet** - Simple portals for hubs/bases
+- **lootchests** - Surprise treasure drops
+- **ambience** - Ambient sounds
 
 ## Included Texture Packs
 
