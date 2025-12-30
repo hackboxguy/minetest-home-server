@@ -1,5 +1,10 @@
 # Luanti Server Docker Compose - For Developers (Build Locally)
 # Run: docker-compose -f docker-compose.build.yml up -d --build
+#
+# First-time deployment with admin setup:
+#   ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.build.yml up -d --build
+#
+# Optional: ADMIN_USER=customadmin (defaults to "admin")
 
 services:
   mineclonia:
@@ -18,6 +23,8 @@ services:
       - ./config/mineclonia.conf:/luanti/luanti/config/luanti.conf
     environment:
       - GAME_TO_PLAY=mineclonia
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_USER=${ADMIN_USER:-admin}
 
   voxelibre:
     build:
@@ -35,3 +42,5 @@ services:
       - ./config/voxelibre.conf:/luanti/luanti/config/luanti.conf
     environment:
       - GAME_TO_PLAY=voxelibre
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_USER=${ADMIN_USER:-admin}

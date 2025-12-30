@@ -19,22 +19,40 @@ fi
 WORLD_DIR="/luanti/luanti/worlds/world"
 mkdir -p "$WORLD_DIR"
 
-# Ensure no_register mod is enabled in world.mt
-# This runs on every startup to ensure the mod is always enabled
+# Ensure required mods are enabled in world.mt
 WORLD_MT="$WORLD_DIR/world.mt"
 if [ -f "$WORLD_MT" ]; then
-  # world.mt exists, check if mod is already enabled
+  # world.mt exists, add mods if not already enabled
   if ! grep -q "load_mod_no_register" "$WORLD_MT"; then
     echo "load_mod_no_register = true" >> "$WORLD_MT"
     echo "Enabled no_register mod in existing world.mt"
+  fi
+  if ! grep -q "load_mod_admin_init" "$WORLD_MT"; then
+    echo "load_mod_admin_init = true" >> "$WORLD_MT"
+    echo "Enabled admin_init mod in existing world.mt"
   fi
 else
   # Create initial world.mt with required settings
   cat > "$WORLD_MT" << EOF
 gameid = $GAME_TO_PLAY
 load_mod_no_register = true
+load_mod_admin_init = true
 EOF
-  echo "Created world.mt with no_register mod enabled"
+  echo "Created world.mt with required mods enabled"
+fi
+
+# Handle admin credentials from environment variables
+# ADMIN_PASSWORD - required for admin setup (optional on restart)
+# ADMIN_USER - optional, defaults to "admin"
+ADMIN_CREDS_FILE="$WORLD_DIR/.admin_credentials"
+if [ -n "$ADMIN_PASSWORD" ]; then
+  ADMIN_USER="${ADMIN_USER:-admin}"
+  echo "Setting up admin account: $ADMIN_USER"
+  cat > "$ADMIN_CREDS_FILE" << EOF
+$ADMIN_USER
+$ADMIN_PASSWORD
+EOF
+  chmod 600 "$ADMIN_CREDS_FILE"
 fi
 
 # Start the Luanti server with terminal mode for interactive console

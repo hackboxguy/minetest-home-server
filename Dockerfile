@@ -210,6 +210,7 @@ RUN mkdir -p /luanti/luanti/games && \
 
 # Copy custom mods
 COPY mods/no_register /luanti/luanti/mods/no_register
+COPY mods/admin_init /luanti/luanti/mods/admin_init
 
 # Expose ports
 EXPOSE 30000-30001
