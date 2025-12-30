@@ -15,15 +15,24 @@ Included games:
 git clone https://github.com/hackboxguy/minetest-home-server.git
 cd minetest-home-server
 
-# Start the server (pulls pre-built image from Docker Hub)
+# Start the server with admin account setup (first-time deployment)
+ADMIN_PASSWORD=yourpassword docker-compose up -d
+
+# Or start without admin setup (if admin already exists)
 docker-compose up -d
 ```
+
+**Note:** The `ADMIN_PASSWORD` environment variable creates an admin account with all privileges. You can also specify a custom admin username with `ADMIN_USER=customname` (defaults to "admin").
 
 ## Build Locally (For Developers)
 
 If you want to build the Docker image yourself:
 
 ```bash
+# First-time deployment with admin setup
+ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.build.yml up -d --build
+
+# Or without admin setup
 docker-compose -f docker-compose.build.yml up -d --build
 ```
 
@@ -45,9 +54,21 @@ Replace `serverip` with the actual IP address or domain name of your server.
 
 ### Admin User Setup
 
-1. After starting the server, connect with the Luanti client
-2. Register the first user as **`admin`** and set a password
-3. The admin user has full privileges including: fly, teleport, kick, ban, weather control, etc.
+The admin account is created automatically using environment variables:
+
+```bash
+# Create admin with default username "admin"
+ADMIN_PASSWORD=yourpassword docker-compose up -d
+
+# Create admin with custom username
+ADMIN_USER=myadmin ADMIN_PASSWORD=yourpassword docker-compose up -d
+```
+
+The admin account is granted **all privileges** automatically, including: fly, noclip, teleport, kick, ban, creative, weather control, server management, and more.
+
+**Re-running with `ADMIN_PASSWORD`** will update the admin password (useful if you forget it).
+
+> **Note:** New user registration from the Luanti client is disabled by default. Only the admin can create new player accounts via the server console.
 
 ### Server Console Access
 
@@ -61,39 +82,67 @@ docker attach luanti_mineclonia
 docker attach luanti_voxelibre
 ```
 
-Type commands without `/` prefix (e.g., `status`, `grant player fly`).
+Type commands with `/` prefix (e.g., `/status`, `/grant player fly`).
 
 Detach with `Ctrl+P` then `Ctrl+Q`.
+
+### Creating New Player Accounts
+
+Since client registration is disabled, use the server console to create accounts:
+
+```bash
+docker attach luanti_mineclonia
+/setpassword playername playerpassword
+```
+
+Then grant basic privileges:
+```
+/grant playername interact
+/grant playername shout
+```
+
+Or grant creative mode to specific players:
+```
+/grant playername creative
+```
 
 ### Useful Admin Commands
 
 | Command | Description |
 |---------|-------------|
-| `status` | Show server status and online players |
-| `grant <player> <privilege>` | Grant privilege to player |
-| `revoke <player> <privilege>` | Revoke privilege from player |
-| `privs <player>` | Show player's privileges |
-| `teleport <player1> <player2>` | Teleport player1 to player2 |
-| `weather clear/rain/thunder` | Change weather |
-| `kick <player>` | Kick player from server |
-| `ban <player>` | Ban player from server |
+| `/status` | Show server status and online players |
+| `/setpassword <player> <pass>` | Create account or change password |
+| `/grant <player> <privilege>` | Grant privilege to player |
+| `/revoke <player> <privilege>` | Revoke privilege from player |
+| `/privs <player>` | Show player's privileges |
+| `/teleport <player1> <player2>` | Teleport player1 to player2 |
+| `/weather clear/rain/thunder` | Change weather |
+| `/kick <player>` | Kick player from server |
+| `/ban <player>` | Ban player from server |
 
 ## Security
 
-### Disable New Registrations
+### Registration Disabled by Default
 
-New user registration is disabled by default (`disallow_empty_password = true`). To allow new registrations, edit the config files and set it to `false`:
+New user registration from the Luanti client is **blocked by default** using the `no_register` mod. This prevents unauthorized players from creating accounts on your server.
 
-- `config/mineclonia.conf`
-- `config/voxelibre.conf`
-
-Then restart the server:
+**To create new player accounts**, use the server console:
 ```bash
-docker-compose restart
+docker attach luanti_mineclonia
+/setpassword newplayer theirpassword
 ```
+
+### Password Security
+
+Empty passwords are not allowed (`disallow_empty_password = true` in config). All accounts must have a password set.
 
 ## Included Mods
 
+### Server Management Mods
+- **no_register** - Blocks new user registration from client (security)
+- **admin_init** - Auto-creates admin account from environment variables
+
+### Gameplay Mods
 - **spectator_mode** - Spectate other players
 - **animalia** - Wildlife/fauna
 - **i3** - Inventory system
