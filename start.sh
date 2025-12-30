@@ -15,12 +15,35 @@ if [ ! -f "/luanti/luanti/config/luanti.conf" ]; then
   exit 1
 fi
 
-# Start the Luanti server
+# Ensure world directory exists
+WORLD_DIR="/luanti/luanti/worlds/world"
+mkdir -p "$WORLD_DIR"
+
+# Ensure no_register mod is enabled in world.mt
+# This runs on every startup to ensure the mod is always enabled
+WORLD_MT="$WORLD_DIR/world.mt"
+if [ -f "$WORLD_MT" ]; then
+  # world.mt exists, check if mod is already enabled
+  if ! grep -q "load_mod_no_register" "$WORLD_MT"; then
+    echo "load_mod_no_register = true" >> "$WORLD_MT"
+    echo "Enabled no_register mod in existing world.mt"
+  fi
+else
+  # Create initial world.mt with required settings
+  cat > "$WORLD_MT" << EOF
+gameid = $GAME_TO_PLAY
+load_mod_no_register = true
+EOF
+  echo "Created world.mt with no_register mod enabled"
+fi
+
+# Start the Luanti server with terminal mode for interactive console
 echo "Starting Luanti server with game: $GAME_TO_PLAY"
 /luanti/luanti/bin/luantiserver \
   --config /luanti/luanti/config/luanti.conf \
   --gameid "$GAME_TO_PLAY" \
-  --worldname world
+  --worldname world \
+  --terminal
 
 # Check if the server started successfully
 if [ $? -ne 0 ]; then

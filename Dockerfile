@@ -17,6 +17,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     curl-dev \
     openssl-dev \
     zlib-dev \
+    ncurses-dev \
     wget \
     unzip
 
@@ -48,6 +49,7 @@ RUN cmake . \
     -DENABLE_SOUND=FALSE \
     -DENABLE_LUAJIT=TRUE \
     -DENABLE_SYSTEM_GMP=TRUE \
+    -DENABLE_CURSES=TRUE \
     -DLUAJIT_INCLUDE_DIR=/usr/local/include/luajit-2.1 \
     -DLUAJIT_LIBRARY=/usr/local/lib/libluajit-5.1.so
 RUN make -j$(nproc)
@@ -189,7 +191,8 @@ RUN apk update && \
     curl \
     openssl \
     zlib \
-    libgcc
+    libgcc \
+    ncurses
 
 # Copy custom LuaJIT from builder stage
 COPY --from=builder /usr/local/lib/libluajit-5.1.so* /usr/local/lib/
@@ -204,6 +207,9 @@ RUN mkdir -p /luanti/luanti/games && \
     mkdir -p /luanti/luanti/mods && \
     mkdir -p /luanti/luanti/textures && \
     mkdir -p /luanti/luanti/worlds/world
+
+# Copy custom mods
+COPY mods/no_register /luanti/luanti/mods/no_register
 
 # Expose ports
 EXPOSE 30000-30001
