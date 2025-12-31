@@ -19,7 +19,7 @@ fi
 WORLD_DIR="/luanti/luanti/worlds/world"
 mkdir -p "$WORLD_DIR"
 
-# Ensure required mods are enabled in world.mt
+# Ensure required mods and settings are in world.mt
 WORLD_MT="$WORLD_DIR/world.mt"
 if [ -f "$WORLD_MT" ]; then
   # world.mt exists, add mods if not already enabled
@@ -31,14 +31,51 @@ if [ -f "$WORLD_MT" ]; then
     echo "load_mod_admin_init = true" >> "$WORLD_MT"
     echo "Enabled admin_init mod in existing world.mt"
   fi
+  # mtui mod - enables online players, chat, and shell features in web admin
+  if ! grep -q "load_mod_mtui" "$WORLD_MT"; then
+    echo "load_mod_mtui = true" >> "$WORLD_MT"
+    echo "Enabled mtui mod in existing world.mt"
+  fi
+  # quest_helper mod - admin commands for treasure hunts and quests
+  if ! grep -q "load_mod_quest_helper" "$WORLD_MT"; then
+    echo "load_mod_quest_helper = true" >> "$WORLD_MT"
+    echo "Enabled quest_helper mod in existing world.mt"
+  fi
+  # Ensure sqlite3 backends for mtui compatibility
+  # Luanti will auto-migrate from files to sqlite3 on first startup
+  if grep -q "auth_backend = files" "$WORLD_MT"; then
+    sed -i 's/auth_backend = files/auth_backend = sqlite3/' "$WORLD_MT"
+    echo "Migrated auth_backend from files to sqlite3 for mtui compatibility"
+  elif ! grep -q "auth_backend" "$WORLD_MT"; then
+    echo "auth_backend = sqlite3" >> "$WORLD_MT"
+    echo "Set auth_backend to sqlite3 for mtui compatibility"
+  fi
+  if grep -q "player_backend = files" "$WORLD_MT"; then
+    sed -i 's/player_backend = files/player_backend = sqlite3/' "$WORLD_MT"
+    echo "Migrated player_backend from files to sqlite3 for mtui compatibility"
+  elif ! grep -q "player_backend" "$WORLD_MT"; then
+    echo "player_backend = sqlite3" >> "$WORLD_MT"
+    echo "Set player_backend to sqlite3 for mtui compatibility"
+  fi
+  # Ensure mod_storage uses sqlite3 backend for mtui compatibility
+  if ! grep -q "mod_storage_backend" "$WORLD_MT"; then
+    echo "mod_storage_backend = sqlite3" >> "$WORLD_MT"
+    echo "Set mod_storage_backend to sqlite3 for mtui compatibility"
+  fi
 else
   # Create initial world.mt with required settings
   cat > "$WORLD_MT" << EOF
 gameid = $GAME_TO_PLAY
+backend = sqlite3
+auth_backend = sqlite3
+player_backend = sqlite3
+mod_storage_backend = sqlite3
 load_mod_no_register = true
 load_mod_admin_init = true
+load_mod_mtui = true
+load_mod_quest_helper = true
 EOF
-  echo "Created world.mt with required mods enabled"
+  echo "Created world.mt with required mods and sqlite3 backends enabled"
 fi
 
 # Handle admin credentials from environment variables

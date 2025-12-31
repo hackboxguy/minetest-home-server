@@ -4,7 +4,10 @@
 # First-time deployment with admin setup:
 #   ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.build.yml up -d --build
 #
-# Optional: ADMIN_USER=customadmin (defaults to "admin")
+# Optional environment variables:
+#   ADMIN_USER=customadmin (defaults to "admin")
+#   MTUI_PORT_MINECLONIA=8000 (web admin for Mineclonia)
+#   MTUI_PORT_VOXELIBRE=8001 (web admin for VoxeLibre)
 
 services:
   mineclonia:
@@ -44,3 +47,51 @@ services:
       - GAME_TO_PLAY=voxelibre
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_USER=${ADMIN_USER:-admin}
+
+  # Web Admin for Mineclonia
+  mtui-mineclonia:
+    image: ghcr.io/minetest-go/mtui:v1.86
+    container_name: mtui_mineclonia
+    restart: unless-stopped
+    depends_on:
+      - mineclonia
+    ports:
+      - "${MTUI_PORT_MINECLONIA:-8000}:8080"
+    volumes:
+      - ./worlds/mineclonia:/world
+      - ./config/mineclonia.conf:/world/minetest.conf:ro
+    environment:
+      - WORLD_DIR=/world
+      - MINETEST_CONFIG=/world/minetest.conf
+      - API_KEY=luanti-mtui-secret-key-2025
+      - ADMIN_USERNAME=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - SERVER_NAME=Mineclonia Admin
+      - LOGLEVEL=info
+      - COOKIE_DOMAIN=
+      - COOKIE_SECURE=false
+      - ENABLE_FEATURES=api,shell,luashell,minetest_config,modmanagement,signup,chat
+
+  # Web Admin for VoxeLibre
+  mtui-voxelibre:
+    image: ghcr.io/minetest-go/mtui:v1.86
+    container_name: mtui_voxelibre
+    restart: unless-stopped
+    depends_on:
+      - voxelibre
+    ports:
+      - "${MTUI_PORT_VOXELIBRE:-8001}:8080"
+    volumes:
+      - ./worlds/voxelibre:/world
+      - ./config/voxelibre.conf:/world/minetest.conf:ro
+    environment:
+      - WORLD_DIR=/world
+      - MINETEST_CONFIG=/world/minetest.conf
+      - API_KEY=luanti-mtui-secret-key-2025
+      - ADMIN_USERNAME=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - SERVER_NAME=VoxeLibre Admin
+      - LOGLEVEL=info
+      - COOKIE_DOMAIN=
+      - COOKIE_SECURE=false
+      - ENABLE_FEATURES=api,shell,luashell,minetest_config,modmanagement,signup,chat

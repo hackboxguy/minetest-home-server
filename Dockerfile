@@ -45,7 +45,7 @@ RUN cmake . \
     -DENABLE_LEVELDB=FALSE \
     -DENABLE_SYSTEM_JSONCPP=FALSE \
     -DENABLE_SPATIAL=FALSE \
-    -DENABLE_CURL=FALSE \
+    -DENABLE_CURL=TRUE \
     -DENABLE_SOUND=FALSE \
     -DENABLE_LUAJIT=TRUE \
     -DENABLE_SYSTEM_GMP=TRUE \
@@ -149,6 +149,12 @@ RUN set -e; \
     if [ -d ambience ]; then :; else mv ambience-* ambience 2>/dev/null || mv TenPlus1-ambience* ambience; fi; \
     rm ambience.zip
 
+# mtui_mod - companion mod for mtui web admin interface
+# Renamed folder to 'mtui' to match mod.conf name for secure.http_mods compatibility
+RUN git clone https://github.com/minetest-go/mtui_mod --depth 1 && \
+    mv mtui_mod mtui && \
+    rm -rf mtui/.git
+
 # Download and install texture packs
 WORKDIR /luanti/luanti/textures
 
@@ -211,6 +217,7 @@ RUN mkdir -p /luanti/luanti/games && \
 # Copy custom mods
 COPY mods/no_register /luanti/luanti/mods/no_register
 COPY mods/admin_init /luanti/luanti/mods/admin_init
+COPY mods/quest_helper /luanti/luanti/mods/quest_helper
 
 # Expose ports
 EXPOSE 30000-30001

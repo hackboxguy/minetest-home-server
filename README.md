@@ -5,8 +5,8 @@ Run a self-hosted, Minecraft-like server for your family—entirely offline—us
 ![Offline Luanti home server diagram](images/luanti-game-server.png)
 
 Included games:
-- **Mineclonia** on port `30000`
-- **VoxeLibre** on port `30001`
+- **Mineclonia** on port `30000` (Web Admin: `http://serverip:8000`)
+- **VoxeLibre** on port `30001` (Web Admin: `http://serverip:8001`)
 
 ## Quick Start (Pre-built Image)
 
@@ -88,8 +88,14 @@ Detach with `Ctrl+P` then `Ctrl+Q`.
 
 ### Creating New Player Accounts
 
-Since client registration is disabled, use the server console to create accounts:
+Since client registration is disabled, you can create accounts via:
 
+**Option 1: Web Admin (Recommended)**
+1. Open `http://serverip:8000` (or `:8001` for VoxeLibre)
+2. Log in with admin credentials
+3. Navigate to account management to create new players
+
+**Option 2: Server Console**
 ```bash
 docker attach luanti_mineclonia
 /setpassword playername playerpassword
@@ -120,6 +126,38 @@ Or grant creative mode to specific players:
 | `/kick <player>` | Kick player from server |
 | `/ban <player>` | Ban player from server |
 
+## Web Admin Interface (mtui)
+
+Each game server includes a web-based admin panel powered by [mtui](https://github.com/minetest-go/mtui):
+
+- **Mineclonia Admin:** `http://serverip:8000`
+- **VoxeLibre Admin:** `http://serverip:8001`
+
+### Features
+
+- **Account Management** - Create, delete, and manage player accounts
+- **Password Management** - Reset player passwords
+- **Privilege Management** - Grant/revoke privileges via web UI
+- **Live Chat** - Monitor and participate in server chat
+- **Server Console** - Execute commands remotely
+- **Player Banning** - Ban/unban players (XBan integration)
+- **Skin Management** - Manage player skins
+- **Mod Management** - View and configure installed mods
+
+### Accessing the Web Admin
+
+1. Open your browser and navigate to `http://serverip:8000` (Mineclonia) or `http://serverip:8001` (VoxeLibre)
+2. Log in with your admin credentials (same as `ADMIN_USER`/`ADMIN_PASSWORD`)
+3. Use the web interface to manage players, privileges, and server settings
+
+### Custom Ports
+
+You can customize the web admin ports using environment variables:
+
+```bash
+MTUI_PORT_MINECLONIA=9000 MTUI_PORT_VOXELIBRE=9001 docker-compose up -d
+```
+
 ## Security
 
 ### Registration Disabled by Default
@@ -141,6 +179,8 @@ Empty passwords are not allowed (`disallow_empty_password = true` in config). Al
 ### Server Management Mods
 - **no_register** - Blocks new user registration from client (security)
 - **admin_init** - Auto-creates admin account from environment variables
+- **mtui** - Companion mod for mtui web admin (live chat, player stats)
+- **quest_helper** - Admin commands for treasure hunts and quests (see below)
 
 ### Gameplay Mods
 - **spectator_mode** - Spectate other players
@@ -154,6 +194,59 @@ Empty passwords are not allowed (`disallow_empty_password = true` in config). Al
 - **travelnet** - Simple portals for hubs/bases
 - **lootchests** - Surprise treasure drops
 - **ambience** - Ambient sounds
+
+## Quest Helper Commands (For Parents/Admins)
+
+The **quest_helper** mod provides admin commands for creating treasure hunts and fun activities for kids:
+
+### Player Kits
+| Command | Description |
+|---------|-------------|
+| `/starterkit <player>` | Give basic survival gear (iron tools, torches, food) |
+| `/herokit <player>` | Give full diamond gear and supplies |
+| `/questkit <player>` | Give exploration kit (compass, maps, tools) |
+
+### Treasure Chests
+| Command | Description |
+|---------|-------------|
+| `/treasure small` | Place chest with basic loot at your position |
+| `/treasure medium` | Place chest with good loot (iron, gold, few diamonds) |
+| `/treasure big` | Place chest with great loot (gold, diamonds, diamond tools) |
+| `/treasure epic` | Place chest with amazing loot (diamond blocks, full armor) |
+
+### Waypoints & Teleporting
+| Command | Description |
+|---------|-------------|
+| `/savespot <name>` | Save current position as named waypoint |
+| `/gospot <name>` | Teleport to saved waypoint |
+| `/bringall` | Teleport all players to your position |
+
+### Announcements
+| Command | Description |
+|---------|-------------|
+| `/announce <message>` | Send highlighted message to all players |
+| `/countdown <seconds> <message>` | Start countdown timer (e.g., `/countdown 10 GO!`) |
+
+### Example: Setting Up a Treasure Hunt
+```bash
+# 1. Teleport to a secret location
+/teleport 500 70 500
+
+# 2. Save this spot
+/savespot treasure1
+
+# 3. Place an epic treasure chest
+/treasure epic
+
+# 4. Go back to spawn
+/teleport 0 70 0
+
+# 5. Give kids quest kits
+/questkit kidname
+
+# 6. Announce the hunt!
+/announce A treasure has been hidden! First one to find it wins!
+```
 
 ## Included Texture Packs
 
