@@ -214,6 +214,14 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 | `/treasure big` | Place chest with great loot (gold, diamonds, diamond tools) |
 | `/treasure epic` | Place chest with amazing loot (diamond blocks, full armor) |
 
+### Signs & Markers
+| Command | Description |
+|---------|-------------|
+| `/placetext <text>` | Place sign with text at your position |
+| `/placetext <x> <y> <z> <text>` | Place sign at coordinates |
+| `/placemarker <color>` | Place colored wool (red, blue, yellow, green, orange, purple, white) |
+| `/trail <color> <length> <n/s/e/w>` | Create trail of markers (e.g., `/trail red 10 n`) |
+
 ### Waypoints & Teleporting
 | Command | Description |
 |---------|-------------|
@@ -254,9 +262,64 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 - **RPG 16** - 16x texture pack
 - **Less Dirt** - Texture adjustments
 
+## Performance Optimization
+
+### Offline/LAN Mode (Optimized for Home Network)
+
+For best performance when playing only on your home network, use the optimized offline configs:
+
+```bash
+# Stop current servers
+docker-compose down
+
+# Start with LAN-optimized settings
+docker-compose -f docker-compose.offline.yml up -d
+```
+
+**LAN optimizations include:**
+- Faster terrain loading (40 blocks/client vs 10)
+- Higher network packet rates (2048 vs default)
+- Faster world generation (2 threads)
+- Smoother liquid physics
+- Lower server tick time (50ms vs 100ms)
+
+### Standard Mode (Internet Players)
+
+For allowing players to join from the internet:
+
+```bash
+docker-compose up -d
+```
+
+### Client-Side Optimization Tips
+
+These settings are configured on each player's Luanti client (not the server):
+
+1. **Open Luanti Client → Settings → All Settings**
+
+2. **For Better FPS:**
+   - `viewing_range` = 100 (lower = better FPS)
+   - `fps_max` = 60
+   - `smooth_lighting` = false (better FPS)
+   - `enable_particles` = false (better FPS)
+   - `enable_3d_clouds` = false (better FPS)
+
+3. **For Better Visuals:**
+   - `viewing_range` = 300
+   - `smooth_lighting` = true
+   - `enable_particles` = true
+   - `texture_min_size` = 64
+
+4. **Recommended Balance:**
+   - `viewing_range` = 150
+   - `fps_max` = 60
+   - `smooth_lighting` = true
+   - `enable_particles` = true
+   - `enable_3d_clouds` = false
+
 ## Recommended for Families
 
-This is an all-in-one setup ideal for families with kids who prefer to keep all players within the home network boundary(offline - disconnected from the Internet).
+This is an all-in-one setup ideal for families with kids who prefer to keep all players within the home network boundary (offline - disconnected from the Internet).
 
 ## Stopping the Server
 

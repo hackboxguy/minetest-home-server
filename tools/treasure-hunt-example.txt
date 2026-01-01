@@ -1,0 +1,42 @@
+# Treasure Hunt Setup Script
+# This is an example batch file for luanti-cli.sh
+# Uses ~ for y coordinate to auto-detect ground level
+#
+# Usage:
+#   ./luanti-cli.sh --password=yourpassword --batch=treasure-hunt-example.txt
+
+# === Starting Point (spawn area around 0,0) ===
+# Place a beacon at spawn - ~ finds ground level automatically
+/beacon 0 ~ 0 blue
+
+# Place welcome sign
+/placetext 2 ~ 0 START HERE!|Follow the red|markers north!
+
+# === First Clue (Red Trail heading north) ===
+# Place red markers heading north from spawn (start 5 blocks north to avoid beacon)
+/trail 0 ~ -5 red 5 n
+
+# Place first hint sign at end of trail (25 blocks north = z-25)
+/placetext 0 ~ -25 CLUE 1|Look EAST for|the tall yellow|beacon!
+
+# === Second Clue (Yellow Beacon 50 blocks east) ===
+# Place yellow beacon east of first clue
+/beacon 50 ~ -25 yellow
+
+/placetext 52 ~ -25 CLUE 2|Head SOUTH to|find the green|trail markers
+
+# === Third Clue (Green Trail heading south, start 5 blocks south to avoid beacon) ===
+/trail 50 ~ -20 green 5 s
+
+# Place sign at end of green trail (25 blocks south = z=0)
+/placetext 50 ~ 0 CLUE 3|Almost there!|Look for the|RED beacon!
+
+# === Treasure Location (50 blocks further south) ===
+# Place red beacon near treasure
+/beacon 50 ~ 25 red
+
+# Place the treasure chest
+/treasure 50 ~ 25 epic
+
+# Place final sign
+/placetext 52 ~ 25 TREASURE!|You found it!|Congratulations!
