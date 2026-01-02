@@ -8,6 +8,206 @@ local function is_admin(name)
     return minetest.check_player_privs(name, {server = true})
 end
 
+-- ============================================
+-- SCOREBOARD SYSTEM
+-- Track player points from solving puzzle chests
+-- ============================================
+
+-- Configuration
+local SCOREBOARD_HUD_ENABLED = true  -- Set to false to disable HUD globally
+local SCOREBOARD_TOP_COUNT = 5       -- Number of players to show on HUD
+
+-- Point values by tier
+local TIER_POINTS = {
+    small = 10,
+    medium = 25,
+    big = 50,
+    epic = 100,
+}
+
+-- Track HUD elements per player
+local player_hud_ids = {}
+
+-- Track current leader for change detection
+local current_leader = nil
+
+-- Get all scores from storage
+local function get_all_scores()
+    local scores_json = storage:get_string("player_scores")
+    if scores_json == "" then
+        return {}
+    end
+    return minetest.parse_json(scores_json) or {}
+end
+
+-- Save all scores to storage
+local function save_all_scores(scores)
+    storage:set_string("player_scores", minetest.write_json(scores))
+end
+
+-- Get a player's score
+local function get_player_score(player_name)
+    local scores = get_all_scores()
+    return scores[player_name] or 0
+end
+
+-- Add points to a player's score (returns new total)
+local function add_player_score(player_name, points)
+    local scores = get_all_scores()
+    scores[player_name] = (scores[player_name] or 0) + points
+    save_all_scores(scores)
+    return scores[player_name]
+end
+
+-- Get sorted leaderboard (array of {name, score} tables)
+local function get_leaderboard(limit)
+    local scores = get_all_scores()
+    local leaderboard = {}
+
+    for name, score in pairs(scores) do
+        table.insert(leaderboard, {name = name, score = score})
+    end
+
+    -- Sort by score descending
+    table.sort(leaderboard, function(a, b)
+        return a.score > b.score
+    end)
+
+    -- Limit results
+    if limit and #leaderboard > limit then
+        local limited = {}
+        for i = 1, limit do
+            limited[i] = leaderboard[i]
+        end
+        return limited
+    end
+
+    return leaderboard
+end
+
+-- Get current leader name (or nil if no scores)
+local function get_leader()
+    local leaderboard = get_leaderboard(1)
+    if #leaderboard > 0 and leaderboard[1].score > 0 then
+        return leaderboard[1].name
+    end
+    return nil
+end
+
+-- Check for lead change and announce if needed
+local function check_lead_change(player_name)
+    local new_leader = get_leader()
+
+    if new_leader and new_leader ~= current_leader then
+        -- Lead has changed!
+        local scores = get_all_scores()
+        local points = scores[new_leader] or 0
+
+        if current_leader then
+            -- Someone took the lead from another player
+            minetest.chat_send_all(minetest.colorize("#FFD700",
+                "*** " .. new_leader .. " takes the lead with " .. points .. " points! ***"))
+        else
+            -- First leader established
+            minetest.chat_send_all(minetest.colorize("#FFD700",
+                "*** " .. new_leader .. " is in the lead with " .. points .. " points! ***"))
+        end
+
+        current_leader = new_leader
+    end
+end
+
+-- Format leaderboard for HUD display
+local function format_hud_leaderboard()
+    local leaderboard = get_leaderboard(SCOREBOARD_TOP_COUNT)
+
+    if #leaderboard == 0 then
+        return "=== LEADERBOARD ===\nNo scores yet"
+    end
+
+    local lines = {"=== LEADERBOARD ==="}
+    for i, entry in ipairs(leaderboard) do
+        local medal = ""
+        if i == 1 then medal = " [1st]"
+        elseif i == 2 then medal = " [2nd]"
+        elseif i == 3 then medal = " [3rd]"
+        end
+        table.insert(lines, i .. ". " .. entry.name .. " - " .. entry.score .. medal)
+    end
+
+    return table.concat(lines, "\n")
+end
+
+-- Update HUD for a specific player
+local function update_player_hud(player)
+    if not SCOREBOARD_HUD_ENABLED then return end
+    if not player then return end
+
+    local player_name = player:get_player_name()
+
+    -- Check if player has HUD disabled
+    local player_meta = player:get_meta()
+    if player_meta:get_int("hud_disabled") == 1 then
+        return
+    end
+
+    local hud_text = format_hud_leaderboard()
+
+    if player_hud_ids[player_name] then
+        -- Update existing HUD
+        player:hud_change(player_hud_ids[player_name], "text", hud_text)
+    else
+        -- Create new HUD element
+        player_hud_ids[player_name] = player:hud_add({
+            hud_elem_type = "text",
+            position = {x = 1, y = 0},
+            offset = {x = -10, y = 80},
+            text = hud_text,
+            alignment = {x = -1, y = 1},
+            scale = {x = 100, y = 100},
+            number = 0xFFD700,  -- Gold color
+            size = {x = 1, y = 1},
+        })
+    end
+end
+
+-- Update HUD for all connected players
+local function update_all_huds()
+    for _, player in ipairs(minetest.get_connected_players()) do
+        update_player_hud(player)
+    end
+end
+
+-- Remove HUD for a player
+local function remove_player_hud(player)
+    local player_name = player:get_player_name()
+    if player_hud_ids[player_name] then
+        player:hud_remove(player_hud_ids[player_name])
+        player_hud_ids[player_name] = nil
+    end
+end
+
+-- Initialize leader on mod load
+minetest.after(1, function()
+    current_leader = get_leader()
+end)
+
+-- Create HUD when player joins
+minetest.register_on_joinplayer(function(player)
+    -- Delay HUD creation slightly to ensure player is fully loaded
+    minetest.after(1, function()
+        if player and player:is_player() then
+            update_player_hud(player)
+        end
+    end)
+end)
+
+-- Clean up HUD when player leaves
+minetest.register_on_leaveplayer(function(player)
+    local player_name = player:get_player_name()
+    player_hud_ids[player_name] = nil
+end)
+
 -- Helper function to ensure chunk is generated at coordinates
 local function ensure_chunk_loaded(x, y, z)
     local node = minetest.get_node({x = x, y = y, z = z})
@@ -1117,6 +1317,51 @@ minetest.register_node("quest_helper:puzzle_chest", {
         if not player then return false end
         return is_admin(player:get_player_name())
     end,
+
+    -- Auto-vanish when chest is emptied after being unlocked
+    on_metadata_inventory_take = function(pos, listname, index, stack, player)
+        if not player then return end
+        local player_name = player:get_player_name()
+        local meta = minetest.get_meta(pos)
+
+        -- Check if chest is now empty
+        local inv = meta:get_inventory()
+        if inv:is_empty("main") then
+            -- Chest is empty - make it vanish with effect
+            minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
+                " emptied by " .. player_name .. " - removing")
+
+            -- Play a magical vanish sound
+            minetest.sound_play("mcl_potions_brewing_finished", {
+                pos = pos, gain = 0.8, max_hear_distance = 16
+            }, true)
+
+            -- Add sparkle particles (using generic particle texture)
+            minetest.add_particlespawner({
+                amount = 32,
+                time = 0.5,
+                minpos = vector.subtract(pos, 0.5),
+                maxpos = vector.add(pos, 0.5),
+                minvel = {x = -1, y = 1, z = -1},
+                maxvel = {x = 1, y = 3, z = 1},
+                minacc = {x = 0, y = -2, z = 0},
+                maxacc = {x = 0, y = -2, z = 0},
+                minexptime = 0.5,
+                maxexptime = 1.5,
+                minsize = 1,
+                maxsize = 2,
+                texture = "mcl_particles_crit.png^[colorize:#FFD700:200",
+                glow = 14,
+            })
+
+            -- Remove the chest
+            minetest.remove_node(pos)
+
+            -- Notify the player
+            minetest.chat_send_player(player_name,
+                minetest.colorize("#FFD700", "*** The puzzle chest vanishes in a puff of sparkles! ***"))
+        end
+    end,
 })
 
 -- Handle formspec submission
@@ -1148,19 +1393,55 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
         end
 
         local meta = minetest.get_meta(pos)
-        local correct_answer = meta:get_string("answer"):lower()
-        local player_answer = (fields.answer or ""):lower()
         local max_attempts = meta:get_int("max_attempts")
-
         local attempt_key = get_attempt_key(player_name, pos)
 
-        -- Check answer (case insensitive)
-        if player_answer == correct_answer then
+        -- Normalize answer: lowercase, trim spaces, collapse multiple spaces
+        local function normalize(str)
+            return str:lower():gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+        end
+
+        -- Check if player answer matches any valid answer
+        -- Supports multiple answers separated by | (e.g., "paris|paris france")
+        local function check_answer(player_ans, correct_ans)
+            player_ans = normalize(player_ans)
+            -- Check each valid answer (separated by |)
+            for valid in correct_ans:gmatch("[^|]+") do
+                valid = normalize(valid)
+                -- Exact match
+                if player_ans == valid then return true end
+                -- Match without spaces (for multi-word answers like "bluewhale" vs "blue whale")
+                if player_ans:gsub("%s", "") == valid:gsub("%s", "") then return true end
+            end
+            return false
+        end
+
+        local correct_answer = meta:get_string("answer")
+        local player_answer = fields.answer or ""
+
+        -- Check answer (case insensitive, space tolerant, multi-answer support)
+        if check_answer(player_answer, correct_answer) then
             -- Correct! Unlock for this player
             meta:set_int("unlocked_" .. player_name, 1)
             puzzle_attempts[attempt_key] = nil  -- Reset attempts
 
-            minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "*** Correct! The puzzle chest is now unlocked! ***"))
+            -- Award points (skip admins)
+            if not is_admin(player_name) then
+                local tier = meta:get_string("tier")
+                local points = TIER_POINTS[tier] or TIER_POINTS["medium"]  -- Default to medium if tier not set
+
+                local new_total = add_player_score(player_name, points)
+
+                minetest.chat_send_player(player_name, minetest.colorize("#00FF00",
+                    "*** Correct! The puzzle chest is now unlocked! +" .. points .. " points (Total: " .. new_total .. ") ***"))
+
+                -- Check for lead change and update HUDs
+                check_lead_change(player_name)
+                update_all_huds()
+            else
+                minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "*** Correct! The puzzle chest is now unlocked! ***"))
+            end
+
             minetest.sound_play("mcl_chests_enderchest_open", {pos = pos, gain = 0.5, max_hear_distance = 16}, true)
 
             -- Close formspec and let them right-click again to access
@@ -1279,6 +1560,7 @@ minetest.register_chatcommand("puzzlechest", {
             meta:set_string("question", question)
             meta:set_string("answer", answer)
             meta:set_int("max_attempts", 3)
+            meta:set_string("tier", tier_lower)  -- Store tier for point calculation
             meta:set_string("infotext", "Puzzle Chest (Locked)")
 
             -- Add loot based on tier
@@ -1350,5 +1632,253 @@ minetest.register_chatcommand("puzzlechest", {
     end,
 })
 
+-- ============================================
+-- VANISH FEATURE
+-- Make admin invisible to other players
+-- ============================================
+
+-- Track vanished players
+local vanished_players = {}
+
+-- Store original player properties for restoration
+local original_properties = {}
+
+-- /vanish - Toggle invisibility for admin
+minetest.register_chatcommand("vanish", {
+    params = "",
+    description = "Toggle invisibility - become invisible to other players while placing chests",
+    privs = {server = true},
+    func = function(name, param)
+        local player = minetest.get_player_by_name(name)
+        if not player then
+            return false, "Player not found"
+        end
+
+        if vanished_players[name] then
+            -- Unvanish - restore visibility
+            vanished_players[name] = nil
+
+            -- Restore original properties
+            if original_properties[name] then
+                player:set_properties(original_properties[name])
+                original_properties[name] = nil
+            else
+                -- Fallback: reset to default player appearance
+                player:set_properties({
+                    visual_size = {x = 1, y = 1, z = 1},
+                    makes_footstep_sound = true,
+                    collisionbox = {-0.3, 0.0, -0.3, 0.3, 1.77, 0.3},
+                    selectionbox = {-0.3, 0.0, -0.3, 0.3, 1.77, 0.3},
+                    pointable = true,
+                })
+            end
+
+            -- Restore nametag
+            player:set_nametag_attributes({
+                color = {a = 255, r = 255, g = 255, b = 255},
+                bgcolor = false,  -- Use default background
+                text = name,
+            })
+
+            -- Restore nametag and visibility in properties too
+            player:set_properties({
+                nametag = name,
+                nametag_color = {a = 255, r = 255, g = 255, b = 255},
+                show_on_minimap = true,
+                is_visible = true,
+            })
+
+            -- Restore visibility of any child objects
+            for _, child in pairs(player:get_children()) do
+                if child and child:get_luaentity() then
+                    child:set_properties({is_visible = true})
+                end
+            end
+
+            minetest.chat_send_player(name, minetest.colorize("#00FF00", "*** You are now VISIBLE to other players ***"))
+            return true, "Vanish mode OFF - you are now visible"
+        else
+            -- Vanish - become invisible
+            vanished_players[name] = true
+
+            -- Store original properties
+            original_properties[name] = player:get_properties()
+
+            -- Make player invisible - comprehensive property set
+            player:set_properties({
+                visual_size = {x = 0, y = 0, z = 0},  -- Shrink to invisible
+                makes_footstep_sound = false,  -- Silent footsteps
+                pointable = false,  -- Can't be targeted/selected by others
+                show_on_minimap = false,  -- Hide from minimap
+                is_visible = false,  -- Explicitly set invisible
+                nametag = "",  -- Empty nametag
+                nametag_color = {a = 0, r = 0, g = 0, b = 0},
+                nametag_bgcolor = {a = 0, r = 0, g = 0, b = 0},
+                infotext = "",  -- Clear any hover text
+            })
+
+            -- Hide nametag completely using nametag attributes API
+            player:set_nametag_attributes({
+                color = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent text
+                bgcolor = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent background
+                text = "",  -- Empty string
+            })
+
+            -- Try to hide from any attached child objects (some games use these for names)
+            for _, child in pairs(player:get_children()) do
+                if child and child:get_luaentity() then
+                    child:set_properties({is_visible = false})
+                end
+            end
+
+            minetest.chat_send_player(name, minetest.colorize("#FFD700", "*** You are now INVISIBLE to other players ***"))
+            minetest.chat_send_player(name, minetest.colorize("#AAAAAA", "Use /vanish again to become visible"))
+            return true, "Vanish mode ON - you are now invisible"
+        end
+    end,
+})
+
+-- Clean up when player leaves
+minetest.register_on_leaveplayer(function(player)
+    local name = player:get_player_name()
+    vanished_players[name] = nil
+    original_properties[name] = nil
+end)
+
+-- Continuously enforce vanish state (some games/mods reset player properties)
+local vanish_timer = 0
+minetest.register_globalstep(function(dtime)
+    vanish_timer = vanish_timer + dtime
+    if vanish_timer < 0.5 then return end  -- Check every 0.5 seconds
+    vanish_timer = 0
+
+    for name, _ in pairs(vanished_players) do
+        local player = minetest.get_player_by_name(name)
+        if player then
+            -- Reapply invisibility
+            player:set_properties({
+                visual_size = {x = 0, y = 0, z = 0},
+                is_visible = false,
+                nametag = "",
+                nametag_color = {a = 0, r = 0, g = 0, b = 0},
+            })
+            player:set_nametag_attributes({
+                color = {a = 0, r = 0, g = 0, b = 0},
+                bgcolor = {a = 0, r = 0, g = 0, b = 0},
+                text = "",
+            })
+        end
+    end
+end)
+
+-- ============================================
+-- SCOREBOARD COMMANDS
+-- ============================================
+
+-- /leaderboard - Show top players
+minetest.register_chatcommand("leaderboard", {
+    params = "",
+    description = "Show the puzzle chest leaderboard",
+    privs = {},
+    func = function(name, param)
+        local leaderboard = get_leaderboard(10)
+
+        if #leaderboard == 0 then
+            return true, "No scores yet! Solve puzzle chests to earn points."
+        end
+
+        local lines = {"=== PUZZLE CHEST LEADERBOARD ==="}
+        for i, entry in ipairs(leaderboard) do
+            local medal = ""
+            if i == 1 then medal = " [1st]"
+            elseif i == 2 then medal = " [2nd]"
+            elseif i == 3 then medal = " [3rd]"
+            end
+            table.insert(lines, i .. ". " .. entry.name .. " - " .. entry.score .. " points" .. medal)
+        end
+
+        return true, table.concat(lines, "\n")
+    end,
+})
+
+-- /myscore - Show your own score
+minetest.register_chatcommand("myscore", {
+    params = "",
+    description = "Show your puzzle chest score and rank",
+    privs = {},
+    func = function(name, param)
+        local score = get_player_score(name)
+        local leaderboard = get_leaderboard()
+
+        -- Find player's rank
+        local rank = 0
+        for i, entry in ipairs(leaderboard) do
+            if entry.name == name then
+                rank = i
+                break
+            end
+        end
+
+        if score == 0 then
+            return true, "You have 0 points. Solve puzzle chests to earn points!"
+        end
+
+        local rank_str = ""
+        if rank > 0 then
+            rank_str = " (Rank #" .. rank .. " of " .. #leaderboard .. ")"
+        end
+
+        return true, "Your score: " .. score .. " points" .. rank_str
+    end,
+})
+
+-- /hud - Toggle leaderboard HUD visibility
+minetest.register_chatcommand("hud", {
+    params = "",
+    description = "Toggle the leaderboard HUD display on/off",
+    privs = {},
+    func = function(name, param)
+        local player = minetest.get_player_by_name(name)
+        if not player then
+            return false, "Player not found"
+        end
+
+        local player_meta = player:get_meta()
+        local hud_disabled = player_meta:get_int("hud_disabled")
+
+        if hud_disabled == 1 then
+            -- Enable HUD
+            player_meta:set_int("hud_disabled", 0)
+            update_player_hud(player)
+            return true, "Leaderboard HUD enabled"
+        else
+            -- Disable HUD
+            player_meta:set_int("hud_disabled", 1)
+            remove_player_hud(player)
+            return true, "Leaderboard HUD disabled"
+        end
+    end,
+})
+
+-- /resetscores - Admin command to reset all scores
+minetest.register_chatcommand("resetscores", {
+    params = "",
+    description = "Reset all puzzle chest scores (admin only)",
+    privs = {server = true},
+    func = function(name, param)
+        -- Clear all scores
+        save_all_scores({})
+        current_leader = nil
+
+        -- Update all HUDs
+        update_all_huds()
+
+        minetest.chat_send_all(minetest.colorize("#FF6600", "*** All puzzle chest scores have been reset! ***"))
+        minetest.log("action", "[quest_helper] Scores reset by " .. name)
+
+        return true, "All scores have been reset"
+    end,
+})
+
 -- Print loaded message
-minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon")
+minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon, /vanish, /leaderboard, /myscore, /hud, /resetscores")
