@@ -100,7 +100,7 @@ local function get_item(item_type)
         diamond_pick = "mcl_tools:pick_diamond",
         iron_sword = "mcl_tools:sword_iron",
         iron_pick = "mcl_tools:pick_iron",
-        bread = "mcl_food:bread",
+        bread = "mcl_farming:bread",
         apple = "mcl_core:apple",
         torch = "mcl_torches:torch",
         compass = "mcl_compass:compass",
@@ -952,5 +952,403 @@ minetest.register_chatcommand("beacon", {
     end,
 })
 
+-- ============================================
+-- PUZZLE CHEST FEATURE
+-- Password-protected chest with explosion on failed attempts
+-- ============================================
+
+-- Track failed attempts per player per chest
+local puzzle_attempts = {}
+
+-- Helper to get attempt key for player+position
+local function get_attempt_key(player_name, pos)
+    return player_name .. ":" .. minetest.pos_to_string(pos)
+end
+
+-- Get formspec for puzzle chest
+local function get_puzzle_formspec(pos, question)
+    local pos_str = minetest.pos_to_string(pos)
+    return "formspec_version[4]" ..
+           "size[10,5]" ..
+           "label[0.5,0.7;PUZZLE CHEST]" ..
+           "label[0.5,1.4;" .. minetest.formspec_escape(question) .. "]" ..
+           "field[0.5,2.2;7,0.8;answer;Your Answer:;]" ..
+           "button[7.8,2.2;1.7,0.8;submit;Submit]" ..
+           "field_close_on_enter[answer;false]" ..
+           "button_exit[0.5,3.5;3,0.8;cancel;Cancel]"
+end
+
+-- Explode and damage player (not the world)
+local function puzzle_explode(pos, player)
+    if not player then return end
+
+    -- Play explosion sound
+    minetest.sound_play("tnt_explode", {pos = pos, gain = 1.0, max_hear_distance = 32}, true)
+
+    -- Add visual explosion particles
+    minetest.add_particlespawner({
+        amount = 64,
+        time = 0.5,
+        minpos = vector.subtract(pos, 2),
+        maxpos = vector.add(pos, 2),
+        minvel = {x = -5, y = -5, z = -5},
+        maxvel = {x = 5, y = 10, z = 5},
+        minacc = {x = 0, y = -10, z = 0},
+        maxacc = {x = 0, y = -10, z = 0},
+        minexptime = 0.5,
+        maxexptime = 1.5,
+        minsize = 3,
+        maxsize = 6,
+        texture = "mcl_particles_smoke.png",
+    })
+
+    -- Damage only the player who failed (heavy damage but survivable with armor)
+    local hp = player:get_hp()
+    player:set_hp(math.max(0, hp - 16))  -- 8 hearts of damage
+
+    -- Notify the player
+    local player_name = player:get_player_name()
+    minetest.chat_send_player(player_name, minetest.colorize("#FF0000", "*** BOOM! The puzzle chest exploded! ***"))
+
+    -- Remove the chest and its contents (lost forever)
+    minetest.remove_node(pos)
+end
+
+-- Register puzzle chest node
+-- Uses nodebox to create a 3D chest shape with gold/treasure appearance
+minetest.register_node("quest_helper:puzzle_chest", {
+    description = "Puzzle Chest",
+    tiles = {
+        "default_gold_block.png",  -- top (gold)
+        "default_gold_block.png",  -- bottom
+        "default_gold_block.png^[colorize:#804000:60",  -- right (darker gold)
+        "default_gold_block.png^[colorize:#804000:60",  -- left
+        "default_gold_block.png^[colorize:#804000:60",  -- back
+        "default_gold_block.png^[colorize:#FF0000:40",  -- front (reddish tint - locked!)
+    },
+    drawtype = "nodebox",
+    paramtype = "light",
+    paramtype2 = "facedir",
+    node_box = {
+        type = "fixed",
+        fixed = {
+            -- Main chest body (bottom part)
+            {-0.4375, -0.5, -0.375, 0.4375, 0.125, 0.375},
+            -- Chest lid (top part, slightly smaller)
+            {-0.4375, 0.125, -0.375, 0.4375, 0.375, 0.375},
+            -- Lock/latch on front
+            {-0.0625, 0.0, 0.375, 0.0625, 0.25, 0.4375},
+        },
+    },
+    selection_box = {
+        type = "fixed",
+        fixed = {-0.4375, -0.5, -0.375, 0.4375, 0.375, 0.4375},
+    },
+    groups = {choppy = 2, oddly_breakable_by_hand = 2, handy = 1, axey = 1},
+    _mcl_hardness = 2.5,
+    _mcl_blast_resistance = 2.5,
+
+    on_construct = function(pos)
+        local meta = minetest.get_meta(pos)
+        local inv = meta:get_inventory()
+        inv:set_size("main", 27)
+        meta:set_string("question", "What is the answer?")
+        meta:set_string("answer", "secret")
+        meta:set_int("max_attempts", 3)
+        meta:set_string("infotext", "Puzzle Chest (Locked)")
+    end,
+
+    on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
+        if not clicker then return end
+        local player_name = clicker:get_player_name()
+        local meta = minetest.get_meta(pos)
+
+        -- Admin bypass: players with server privilege skip the puzzle
+        if is_admin(player_name) then
+            minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "[Admin] Bypassing puzzle - showing chest contents"))
+            -- Show regular chest formspec
+            local inv_formspec = "formspec_version[4]" ..
+                                "size[9,8.75]" ..
+                                "label[0.5,0.5;Puzzle Chest (Admin Access)]" ..
+                                "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
+                                "list[current_player;main;0.5,4.75;9,3;9]" ..
+                                "list[current_player;main;0.5,7.75;9,1;]" ..
+                                "listring[]"
+            minetest.show_formspec(player_name, "quest_helper:puzzle_chest_admin", inv_formspec)
+            return
+        end
+
+        -- Check if already unlocked by this player
+        local unlocked_key = "unlocked_" .. player_name
+        if meta:get_int(unlocked_key) == 1 then
+            -- Already unlocked, show chest inventory
+            local inv_formspec = "formspec_version[4]" ..
+                                "size[9,8.75]" ..
+                                "label[0.5,0.5;Puzzle Chest (Unlocked)]" ..
+                                "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
+                                "list[current_player;main;0.5,4.75;9,3;9]" ..
+                                "list[current_player;main;0.5,7.75;9,1;]" ..
+                                "listring[]"
+            minetest.show_formspec(player_name, "quest_helper:puzzle_chest_unlocked", inv_formspec)
+            return
+        end
+
+        -- Show puzzle formspec
+        local question = meta:get_string("question")
+        local attempt_key = get_attempt_key(player_name, pos)
+        local attempts = puzzle_attempts[attempt_key] or 0
+        local max_attempts = meta:get_int("max_attempts")
+
+        -- Add attempt warning to question
+        local full_question = question
+        if attempts > 0 then
+            full_question = question .. " (Attempts: " .. attempts .. "/" .. max_attempts .. ")"
+        end
+
+        -- Store position in player metadata for formspec handler
+        local player_meta = clicker:get_meta()
+        player_meta:set_string("puzzle_chest_pos", minetest.pos_to_string(pos))
+
+        minetest.show_formspec(player_name, "quest_helper:puzzle_chest", get_puzzle_formspec(pos, full_question))
+    end,
+
+    -- Prevent breaking by non-admins (optional security)
+    can_dig = function(pos, player)
+        if not player then return false end
+        return is_admin(player:get_player_name())
+    end,
+})
+
+-- Handle formspec submission
+minetest.register_on_player_receive_fields(function(player, formname, fields)
+    if formname ~= "quest_helper:puzzle_chest" then return end
+    if not player then return end
+
+    local player_name = player:get_player_name()
+
+    -- Cancel button
+    if fields.cancel or fields.quit then
+        return true
+    end
+
+    -- Submit button or enter key
+    if fields.submit or fields.key_enter_field then
+        local player_meta = player:get_meta()
+        local pos_str = player_meta:get_string("puzzle_chest_pos")
+        if pos_str == "" then return true end
+
+        local pos = minetest.string_to_pos(pos_str)
+        if not pos then return true end
+
+        -- Verify node still exists
+        local node = minetest.get_node(pos)
+        if node.name ~= "quest_helper:puzzle_chest" then
+            minetest.chat_send_player(player_name, "The puzzle chest is no longer there!")
+            return true
+        end
+
+        local meta = minetest.get_meta(pos)
+        local correct_answer = meta:get_string("answer"):lower()
+        local player_answer = (fields.answer or ""):lower()
+        local max_attempts = meta:get_int("max_attempts")
+
+        local attempt_key = get_attempt_key(player_name, pos)
+
+        -- Check answer (case insensitive)
+        if player_answer == correct_answer then
+            -- Correct! Unlock for this player
+            meta:set_int("unlocked_" .. player_name, 1)
+            puzzle_attempts[attempt_key] = nil  -- Reset attempts
+
+            minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "*** Correct! The puzzle chest is now unlocked! ***"))
+            minetest.sound_play("mcl_chests_enderchest_open", {pos = pos, gain = 0.5, max_hear_distance = 16}, true)
+
+            -- Close formspec and let them right-click again to access
+            minetest.close_formspec(player_name, "quest_helper:puzzle_chest")
+        else
+            -- Wrong answer
+            local attempts = (puzzle_attempts[attempt_key] or 0) + 1
+            puzzle_attempts[attempt_key] = attempts
+
+            if attempts >= max_attempts then
+                -- BOOM!
+                minetest.close_formspec(player_name, "quest_helper:puzzle_chest")
+                minetest.after(0.2, function()
+                    puzzle_explode(pos, player)
+                end)
+            else
+                -- Wrong but more attempts remain
+                local remaining = max_attempts - attempts
+                minetest.chat_send_player(player_name,
+                    minetest.colorize("#FF6600", "*** Wrong answer! " .. remaining .. " attempt(s) remaining. ***"))
+
+                -- Update formspec with new attempt count
+                local question = meta:get_string("question") .. " (Attempts: " .. attempts .. "/" .. max_attempts .. ")"
+                minetest.show_formspec(player_name, "quest_helper:puzzle_chest", get_puzzle_formspec(pos, question))
+            end
+        end
+
+        return true
+    end
+
+    return true
+end)
+
+-- /puzzlechest command - Place a puzzle chest with question and answer
+-- y can be ~ for ground level auto-detection
+-- Works remotely via CLI when coordinates are provided
+minetest.register_chatcommand("puzzlechest", {
+    params = "[<x> <y|~> <z>] <tier> <question> | <answer>",
+    description = "Place a puzzle chest. Use ~ for ground level, | to separate question and answer. Example: /puzzlechest 100 ~ 200 medium What is 2+2? | four",
+    privs = {server = true},
+    func = function(name, param)
+        local player = minetest.get_player_by_name(name)
+
+        local x, y_str, z, rest
+        local pos, tier, qa_text
+
+        -- Try to parse coordinates first (y can be number or ~)
+        x, y_str, z, rest = param:match("^(-?%d+)%s+([~g%-]?%d*)%s+(-?%d+)%s+(.+)$")
+
+        if x and y_str and z and rest then
+            local y = parse_y_coord(y_str, tonumber(x), tonumber(z))
+            pos = {x = tonumber(x), y = y, z = tonumber(z)}
+            -- Parse tier and question|answer from rest
+            tier, qa_text = rest:match("^(%w+)%s+(.+)$")
+        else
+            -- No coordinates, need player position
+            if not player then
+                return false, "Coordinates required when not in-game. Usage: /puzzlechest <x> <y|~> <z> <tier> <question> | <answer>"
+            end
+            tier, qa_text = param:match("^(%w+)%s+(.+)$")
+            if not tier then
+                return false, "Usage: /puzzlechest <tier> <question> | <answer> OR /puzzlechest <x> <y|~> <z> <tier> <question> | <answer>"
+            end
+            pos = vector.round(player:get_pos())
+        end
+
+        if not qa_text then
+            return false, "Please provide question and answer separated by |"
+        end
+
+        -- Parse question and answer (separated by |)
+        local question, answer = qa_text:match("^(.-)%s*|%s*(.+)$")
+        if not question or not answer then
+            return false, "Please separate question and answer with |. Example: What is the capital? | Paris"
+        end
+
+        question = question:gsub("^%s+", ""):gsub("%s+$", "")
+        answer = answer:gsub("^%s+", ""):gsub("%s+$", "")
+
+        if question == "" or answer == "" then
+            return false, "Both question and answer are required"
+        end
+
+        -- Ensure the chunk is loaded before placing (critical for remote CLI commands)
+        ensure_chunk_loaded(pos.x, pos.y, pos.z)
+
+        -- Small delay to let chunk load, then place with callback
+        minetest.after(0.5, function()
+            -- Re-ensure chunk is loaded
+            ensure_chunk_loaded(pos.x, pos.y, pos.z)
+
+            -- Check what's at the position before placing
+            local old_node = minetest.get_node(pos)
+            minetest.log("action", "[quest_helper] Placing puzzle chest at " .. minetest.pos_to_string(pos) ..
+                " (replacing: " .. old_node.name .. ")")
+
+            -- Place the puzzle chest
+            minetest.set_node(pos, {name = "quest_helper:puzzle_chest"})
+
+            -- Verify placement
+            local new_node = minetest.get_node(pos)
+            if new_node.name ~= "quest_helper:puzzle_chest" then
+                minetest.log("error", "[quest_helper] Failed to place puzzle chest! Got: " .. new_node.name)
+            else
+                minetest.log("action", "[quest_helper] Puzzle chest successfully placed")
+            end
+        end)
+
+        -- Set up metadata immediately (will be ready when minetest.after fires)
+        minetest.after(0.6, function()
+            local meta = minetest.get_meta(pos)
+            local inv = meta:get_inventory()
+            inv:set_size("main", 27)
+
+            -- Set puzzle data
+            meta:set_string("question", question)
+            meta:set_string("answer", answer)
+            meta:set_int("max_attempts", 3)
+            meta:set_string("infotext", "Puzzle Chest (Locked)")
+
+            -- Add loot based on tier
+            local loot = {}
+            local tier_lower = tier:lower()
+
+            if tier_lower == "small" then
+                loot = {
+                    {get_item("iron"), math.random(3, 8)},
+                    {get_item("bread"), math.random(4, 10)},
+                    {get_item("torch"), math.random(8, 16)},
+                }
+            elseif tier_lower == "medium" then
+                loot = {
+                    {get_item("iron"), math.random(8, 16)},
+                    {get_item("gold"), math.random(4, 8)},
+                    {get_item("diamond"), math.random(1, 3)},
+                    {get_item("bread"), math.random(8, 16)},
+                    {get_item("iron_sword"), 1},
+                }
+            elseif tier_lower == "big" then
+                loot = {
+                    {get_item("gold"), math.random(16, 32)},
+                    {get_item("diamond"), math.random(4, 8)},
+                    {get_item("emerald"), math.random(2, 5)},
+                    {get_item("diamond_sword"), 1},
+                    {get_item("diamond_pick"), 1},
+                }
+            elseif tier_lower == "epic" then
+                loot = {
+                    {get_item("diamondblock"), math.random(2, 5)},
+                    {get_item("emerald"), math.random(8, 16)},
+                    {get_item("diamond_sword"), 1},
+                    {get_item("diamond_pick"), 1},
+                    {get_item("helmet_diamond"), 1},
+                    {get_item("chestplate_diamond"), 1},
+                    {get_item("leggings_diamond"), 1},
+                    {get_item("boots_diamond"), 1},
+                }
+            else
+                -- Default to medium if tier not recognized
+                loot = {
+                    {get_item("iron"), math.random(8, 16)},
+                    {get_item("gold"), math.random(4, 8)},
+                    {get_item("diamond"), math.random(1, 3)},
+                    {get_item("bread"), math.random(8, 16)},
+                    {get_item("iron_sword"), 1},
+                }
+            end
+
+            -- Add items to chest
+            for _, item in ipairs(loot) do
+                if item[1] and item[2] then
+                    inv:add_item("main", item[1] .. " " .. item[2])
+                end
+            end
+
+            minetest.log("action", "[quest_helper] Puzzle chest loot added at " .. minetest.pos_to_string(pos))
+        end)
+
+        -- Build warning message if Y seems underground
+        local warning = ""
+        if pos.y < 40 then
+            warning = " WARNING: Y=" .. pos.y .. " may be underground! Surface is typically Y=60+. Consider using ~ for auto ground level."
+        end
+
+        return true, "Placed " .. tier .. " puzzle chest at (" .. pos.x .. "," .. pos.y .. "," .. pos.z ..
+            ") (Question: " .. question .. ")" .. warning
+    end,
+})
+
 -- Print loaded message
-minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon")
+minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon")

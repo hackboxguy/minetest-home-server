@@ -213,6 +213,32 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 | `/treasure medium` | Place chest with good loot (iron, gold, few diamonds) |
 | `/treasure big` | Place chest with great loot (gold, diamonds, diamond tools) |
 | `/treasure epic` | Place chest with amazing loot (diamond blocks, full armor) |
+| `/treasure <x> <y\|~> <z> <tier>` | Place at coordinates (use `~` for auto ground level) |
+
+### Puzzle Chests (Password Protected)
+| Command | Description |
+|---------|-------------|
+| `/puzzlechest <tier> <question> \| <answer>` | Place puzzle chest at your position |
+| `/puzzlechest <x> <y\|~> <z> <tier> <question> \| <answer>` | Place at coordinates |
+
+**Example:** `/puzzlechest medium What is 2+2? | four`
+
+**Features:**
+- Players must answer correctly to unlock the chest
+- Case-insensitive answers
+- 3 attempts before the chest **explodes** (damages player, loot lost forever!)
+- Admins bypass the puzzle automatically
+- Each player must solve independently
+
+### Beacons & Poles
+| Command | Description |
+|---------|-------------|
+| `/beacon <color>` | Create tall glowing beacon at your position |
+| `/beacon <x> <y\|~> <z> <color>` | Create beacon at coordinates |
+| `/pole <color> <height>` | Create vertical pole of blocks |
+| `/pole <x> <y\|~> <z> <color> <height>` | Create pole at coordinates |
+
+**Colors:** red, blue, yellow, green, white, orange (beacons also: gold, diamond, glow for poles)
 
 ### Signs & Markers
 | Command | Description |
@@ -235,26 +261,43 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 | `/announce <message>` | Send highlighted message to all players |
 | `/countdown <seconds> <message>` | Start countdown timer (e.g., `/countdown 10 GO!`) |
 
-### Example: Setting Up a Treasure Hunt
+### Ground-Level Auto-Detection
+
+Most placement commands support `~` for automatic ground-level detection:
+
 ```bash
-# 1. Teleport to a secret location
-/teleport 500 70 500
+# Place beacon at x=100, z=200, auto-detect Y (ground level)
+/beacon 100 ~ 200 blue
 
-# 2. Save this spot
-/savespot treasure1
+# Place puzzle chest at ground level
+/puzzlechest 50 ~ 25 medium What color is the sky? | blue
+```
 
-# 3. Place an epic treasure chest
-/treasure epic
+### Example: Setting Up a Treasure Hunt
 
-# 4. Go back to spawn
-/teleport 0 70 0
+```bash
+# 1. Place a starting beacon at spawn (~ auto-detects ground)
+/beacon 0 ~ 0 blue
+/placetext 2 ~ 0 START HERE!|Follow the red|markers north!
+
+# 2. Create a trail heading north
+/trail 0 ~ -5 red 5 n
+
+# 3. Place clue sign at end of trail
+/placetext 0 ~ -25 CLUE 1|Look EAST for|the yellow beacon!
+
+# 4. Place next beacon and puzzle chest
+/beacon 50 ~ -25 yellow
+/puzzlechest 52 ~ -25 epic What is Mom's favorite color? | purple
 
 # 5. Give kids quest kits
 /questkit kidname
 
 # 6. Announce the hunt!
-/announce A treasure has been hidden! First one to find it wins!
+/announce A treasure hunt has begun! Start at the blue beacon!
 ```
+
+**See also:** `tools/treasure-hunt-example.txt` for a complete batch script.
 
 ## Included Texture Packs
 
