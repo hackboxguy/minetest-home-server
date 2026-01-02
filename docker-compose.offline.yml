@@ -4,6 +4,12 @@
 #
 # First-time deployment with admin setup:
 #   ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.offline.yml up -d
+#
+# Start new world with specific seed:
+#   GAME_SEED=12345 ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.offline.yml up -d
+#
+# Note: Seed only applies to NEW worlds. To change seed on existing world,
+# delete the world folder first or manually edit worlds/*/world.mt
 
 services:
   mineclonia:
@@ -25,6 +31,7 @@ services:
       - GAME_TO_PLAY=mineclonia
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_USER=${ADMIN_USER:-admin}
+      - GAME_SEED=${GAME_SEED:-}
 
   voxelibre:
     image: hackboxguy/luanti-home-server:latest
@@ -45,6 +52,7 @@ services:
       - GAME_TO_PLAY=voxelibre
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_USER=${ADMIN_USER:-admin}
+      - GAME_SEED=${GAME_SEED:-}
 
   # Web Admin for Mineclonia
   mtui-mineclonia:

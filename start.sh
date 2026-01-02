@@ -76,6 +76,27 @@ load_mod_mtui = true
 load_mod_quest_helper = true
 EOF
   echo "Created world.mt with required mods and sqlite3 backends enabled"
+
+  # Add seed if GAME_SEED environment variable is set (only for new worlds)
+  if [ -n "$GAME_SEED" ]; then
+    echo "seed = $GAME_SEED" >> "$WORLD_MT"
+    echo "Set world seed to: $GAME_SEED"
+  fi
+fi
+
+# Handle seed update for existing worlds (only if explicitly requested)
+# Note: Changing seed on existing world only affects newly generated chunks
+if [ -n "$GAME_SEED" ] && [ -f "$WORLD_MT" ]; then
+  if grep -q "^seed = " "$WORLD_MT"; then
+    CURRENT_SEED=$(grep "^seed = " "$WORLD_MT" | cut -d'=' -f2 | tr -d ' ')
+    if [ "$CURRENT_SEED" != "$GAME_SEED" ]; then
+      echo "WARNING: World already has seed=$CURRENT_SEED, not changing to $GAME_SEED"
+      echo "To change seed, delete the world or manually edit world.mt"
+    fi
+  else
+    echo "seed = $GAME_SEED" >> "$WORLD_MT"
+    echo "Added seed to existing world: $GAME_SEED (only affects new chunks)"
+  fi
 fi
 
 # Handle admin credentials from environment variables
