@@ -1207,8 +1207,8 @@ minetest.register_chatcommand("puzzlechest", {
         local x, y_str, z, rest
         local pos, tier, qa_text
 
-        -- Try to parse coordinates first (y can be number or ~)
-        x, y_str, z, rest = param:match("^(-?%d+)%s+([~g%-]?%d*)%s+(-?%d+)%s+(.+)$")
+        -- Try to parse coordinates first (y can be number or ~, supports decimals)
+        x, y_str, z, rest = param:match("^(-?%d+%.?%d*)%s+([~g%-]?%d*%.?%d*)%s+(-?%d+%.?%d*)%s+(.+)$")
 
         if x and y_str and z and rest then
             local y = parse_y_coord(y_str, tonumber(x), tonumber(z))
