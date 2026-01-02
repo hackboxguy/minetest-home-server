@@ -15,6 +15,29 @@ if [ ! -f "/luanti/luanti/config/luanti.conf" ]; then
   exit 1
 fi
 
+# Convert string seeds to numeric (Luanti requires numeric seeds)
+# If GAME_SEED is not a number, hash it to create a numeric seed
+if [ -n "$GAME_SEED" ]; then
+  case "$GAME_SEED" in
+    ''|*[!0-9-]*)
+      # Contains non-numeric characters, hash it
+      ORIGINAL_SEED="$GAME_SEED"
+      GAME_SEED=$(echo -n "$GAME_SEED" | md5sum | tr -d -c '0-9' | head -c 9)
+      echo "Converted string seed '$ORIGINAL_SEED' to numeric seed: $GAME_SEED"
+      ;;
+  esac
+
+  # Set seed in config file (this is where Luanti actually reads it from)
+  CONFIG_FILE="/luanti/luanti/config/luanti.conf"
+  if grep -q "^fixed_map_seed" "$CONFIG_FILE"; then
+    sed -i "s/^fixed_map_seed.*/fixed_map_seed = $GAME_SEED/" "$CONFIG_FILE"
+    echo "Updated fixed_map_seed in config to: $GAME_SEED"
+  else
+    echo "fixed_map_seed = $GAME_SEED" >> "$CONFIG_FILE"
+    echo "Added fixed_map_seed to config: $GAME_SEED"
+  fi
+fi
+
 # Ensure world directory exists
 WORLD_DIR="/luanti/luanti/worlds/world"
 mkdir -p "$WORLD_DIR"
