@@ -1215,43 +1215,43 @@ local function puzzle_explode(pos, player)
 end
 
 -- Puzzle chest tier configurations with distinct colors
--- small -> bronze, medium -> silver, big -> gold, epic -> diamond
+-- small -> brown/wooden, medium -> silver/iron, big -> gold, epic -> diamond/purple
 local PUZZLE_CHEST_TIERS = {
     small = {
-        description = "Bronze Puzzle Chest",
-        infotext = "Bronze Puzzle Chest (Locked)",
-        -- Bronze/copper color scheme
-        base_texture = "default_gold_block.png^[colorize:#CD7F32:180",  -- Bronze
-        side_texture = "default_gold_block.png^[colorize:#8B4513:200",  -- Darker bronze
-        front_texture = "default_gold_block.png^[colorize:#A0522D:180", -- Sienna front
-        particle_color = "#CD7F32",
+        description = "Wooden Puzzle Chest",
+        infotext = "Wooden Puzzle Chest (Locked)",
+        -- Brown/wooden color scheme - clearly distinct from gold
+        base_texture = "default_gold_block.png^[colorize:#8B4513:220",  -- Saddle brown
+        side_texture = "default_gold_block.png^[colorize:#654321:230",  -- Dark brown
+        front_texture = "default_gold_block.png^[colorize:#5D3A1A:220", -- Coffee brown
+        particle_color = "#8B4513",
     },
     medium = {
-        description = "Silver Puzzle Chest",
-        infotext = "Silver Puzzle Chest (Locked)",
+        description = "Iron Puzzle Chest",
+        infotext = "Iron Puzzle Chest (Locked)",
         -- Silver/iron color scheme
-        base_texture = "default_gold_block.png^[colorize:#C0C0C0:200",  -- Silver
-        side_texture = "default_gold_block.png^[colorize:#808080:180",  -- Gray sides
-        front_texture = "default_gold_block.png^[colorize:#A9A9A9:180", -- Dark gray front
-        particle_color = "#C0C0C0",
+        base_texture = "default_gold_block.png^[colorize:#A8A8A8:210",  -- Light gray
+        side_texture = "default_gold_block.png^[colorize:#696969:200",  -- Dim gray sides
+        front_texture = "default_gold_block.png^[colorize:#808080:200", -- Gray front
+        particle_color = "#A8A8A8",
     },
     big = {
         description = "Gold Puzzle Chest",
         infotext = "Gold Puzzle Chest (Locked)",
-        -- Gold color scheme (original)
-        base_texture = "default_gold_block.png",  -- Gold
-        side_texture = "default_gold_block.png^[colorize:#804000:60",  -- Darker gold
-        front_texture = "default_gold_block.png^[colorize:#FF8C00:40", -- Orange-gold front
+        -- Bright gold color scheme - distinctly yellow
+        base_texture = "default_gold_block.png^[colorize:#FFD700:80",   -- Bright gold
+        side_texture = "default_gold_block.png^[colorize:#DAA520:100",  -- Goldenrod sides
+        front_texture = "default_gold_block.png^[colorize:#FFC000:80",  -- Amber front
         particle_color = "#FFD700",
     },
     epic = {
         description = "Diamond Puzzle Chest",
         infotext = "Diamond Puzzle Chest (Locked)",
-        -- Diamond/cyan color scheme
-        base_texture = "default_gold_block.png^[colorize:#00FFFF:180",  -- Cyan/diamond
-        side_texture = "default_gold_block.png^[colorize:#4169E1:160",  -- Royal blue sides
-        front_texture = "default_gold_block.png^[colorize:#00CED1:160", -- Dark turquoise front
-        particle_color = "#00FFFF",
+        -- Purple/magenta color scheme - magical and rare
+        base_texture = "default_gold_block.png^[colorize:#9932CC:180",  -- Dark orchid
+        side_texture = "default_gold_block.png^[colorize:#8B008B:180",  -- Dark magenta sides
+        front_texture = "default_gold_block.png^[colorize:#BA55D3:170", -- Medium orchid front
+        particle_color = "#9932CC",
     },
 }
 
@@ -1938,5 +1938,491 @@ minetest.register_chatcommand("resetscores", {
     end,
 })
 
+-- ============================================
+-- QUESTION POOL & CHESTMODE SYSTEM
+-- Load questions from JSON, admin GUI placement mode
+-- ============================================
+
+-- Question pool storage
+local question_pool = {
+    easy = {},
+    medium = {},
+    hard = {},
+    expert = {},
+}
+
+-- Track used question IDs per session (to avoid duplicates)
+local used_questions = {}
+
+-- Track players in placement mode
+local placement_mode = {}
+
+-- Simple JSON parser for our specific format (Minetest's parse_json works for this)
+local function load_questions_from_file()
+    local modpath = minetest.get_modpath("quest_helper")
+    local filepath = modpath .. "/questions.json"
+
+    -- Try to read the file
+    local file = io.open(filepath, "r")
+    if not file then
+        minetest.log("warning", "[quest_helper] Could not open questions.json at " .. filepath)
+        return false
+    end
+
+    local content = file:read("*all")
+    file:close()
+
+    if not content or content == "" then
+        minetest.log("warning", "[quest_helper] questions.json is empty")
+        return false
+    end
+
+    -- Parse JSON
+    local data = minetest.parse_json(content)
+    if not data then
+        minetest.log("error", "[quest_helper] Failed to parse questions.json")
+        return false
+    end
+
+    -- Clear existing pools
+    question_pool = {
+        easy = {},
+        medium = {},
+        hard = {},
+        expert = {},
+    }
+
+    -- Load questions into pools
+    local count = 0
+    for difficulty, questions in pairs(data) do
+        if difficulty ~= "metadata" and type(questions) == "table" then
+            question_pool[difficulty] = questions
+            count = count + #questions
+            minetest.log("action", "[quest_helper] Loaded " .. #questions .. " " .. difficulty .. " questions")
+        end
+    end
+
+    minetest.log("action", "[quest_helper] Total questions loaded: " .. count)
+    return true, count
+end
+
+-- Load questions on mod init
+minetest.after(0, function()
+    load_questions_from_file()
+end)
+
+-- Get a random question from pool, optionally filtered by category
+-- Returns {question, answer, hint, category, difficulty} or nil
+local function get_random_question(difficulty, category)
+    local pool = question_pool[difficulty]
+    if not pool or #pool == 0 then
+        -- Fallback to medium if requested difficulty is empty
+        pool = question_pool["medium"]
+        difficulty = "medium"
+    end
+
+    if not pool or #pool == 0 then
+        return nil
+    end
+
+    -- Filter by category if specified
+    local filtered = {}
+    if category and category ~= "any" and category ~= "" then
+        for _, q in ipairs(pool) do
+            if q.category == category then
+                -- Check if not already used
+                if not used_questions[q.id] then
+                    table.insert(filtered, q)
+                end
+            end
+        end
+    else
+        -- No category filter, just exclude used questions
+        for _, q in ipairs(pool) do
+            if not used_questions[q.id] then
+                table.insert(filtered, q)
+            end
+        end
+    end
+
+    -- If all questions used, reset and try again
+    if #filtered == 0 then
+        minetest.log("action", "[quest_helper] All questions used, resetting pool")
+        used_questions = {}
+        -- Retry without used filter
+        if category and category ~= "any" and category ~= "" then
+            for _, q in ipairs(pool) do
+                if q.category == category then
+                    table.insert(filtered, q)
+                end
+            end
+        else
+            filtered = pool
+        end
+    end
+
+    if #filtered == 0 then
+        return nil
+    end
+
+    -- Pick random question
+    local idx = math.random(1, #filtered)
+    local q = filtered[idx]
+
+    -- Mark as used
+    used_questions[q.id] = true
+
+    return {
+        question = q.q,
+        answer = q.a,
+        hint = q.hint,
+        category = q.category,
+        difficulty = difficulty,
+        id = q.id,
+    }
+end
+
+-- Map difficulty selection to chest tiers
+local DIFFICULTY_TO_TIER = {
+    easy = "small",
+    medium = "medium",
+    hard = "big",
+    expert = "epic",
+}
+
+-- Get chestmode configuration formspec
+local function get_chestmode_formspec(player_name)
+    local mode = placement_mode[player_name] or {}
+    local current_tier = mode.tier or "random"
+    local current_difficulty = mode.difficulty or "random"
+    local current_category = mode.category or "any"
+
+    -- Build tier dropdown (1-indexed for formspec) - includes "random" option
+    local tiers = {"random", "small", "medium", "big", "epic"}
+    local tier_idx = 1
+    for i, t in ipairs(tiers) do
+        if t == current_tier then tier_idx = i break end
+    end
+
+    -- Build difficulty dropdown - includes "random" option
+    local difficulties = {"random", "easy", "medium", "hard", "expert"}
+    local diff_idx = 1
+    for i, d in ipairs(difficulties) do
+        if d == current_difficulty then diff_idx = i break end
+    end
+
+    -- Build category dropdown
+    local categories = {"any", "math", "science", "geography", "nature", "history", "general"}
+    local cat_idx = 1
+    for i, c in ipairs(categories) do
+        if c == current_category then cat_idx = i break end
+    end
+
+    local enabled_text = mode.enabled and "ENABLED (punch to place)" or "DISABLED"
+    local toggle_label = mode.enabled and "Disable" or "Enable"
+    local status_color = mode.enabled and "#00FF00" or "#FF6666"
+
+    return "formspec_version[4]" ..
+           "size[8,7]" ..
+           "label[0.5,0.5;PUZZLE CHEST PLACEMENT MODE]" ..
+           "label[0.5,1.0;" .. minetest.colorize(status_color, "Status: " .. enabled_text) .. "]" ..
+           "label[0.5,1.8;Chest Tier (reward level):]" ..
+           "dropdown[0.5,2.1;3,0.6;tier;random,small,medium,big,epic;" .. tier_idx .. ";true]" ..
+           "label[4,1.8;Question Difficulty:]" ..
+           "dropdown[4,2.1;3.5,0.6;difficulty;random,easy,medium,hard,expert;" .. diff_idx .. ";true]" ..
+           "label[0.5,3.2;Question Category:]" ..
+           "dropdown[0.5,3.5;3,0.6;category;any,math,science,geography,nature,history,general;" .. cat_idx .. ";true]" ..
+           "label[4,3.2;Hint:]" ..
+           "label[4,3.6;Punch any block to place]" ..
+           "label[4,4.0;chest at that location]" ..
+           "button[0.5,5;3,0.8;toggle;" .. toggle_label .. " Mode]" ..
+           "button_exit[4,5;3.5,0.8;close;Close]" ..
+           "label[0.5,6.2;" .. minetest.colorize("#888888", "Tip: Use /chestmode to open this menu") .. "]"
+end
+
+-- Lookup tables for dropdown index -> value conversion
+local TIER_VALUES = {"random", "small", "medium", "big", "epic"}
+local DIFFICULTY_VALUES = {"random", "easy", "medium", "hard", "expert"}
+local CATEGORY_VALUES = {"any", "math", "science", "geography", "nature", "history", "general"}
+
+-- Actual values for random selection (excludes "random" itself)
+local ACTUAL_TIERS = {"small", "medium", "big", "epic"}
+local ACTUAL_DIFFICULTIES = {"easy", "medium", "hard", "expert"}
+
+-- Handle chestmode formspec
+minetest.register_on_player_receive_fields(function(player, formname, fields)
+    if formname ~= "quest_helper:chestmode" then return end
+    if not player then return end
+
+    local player_name = player:get_player_name()
+    if not is_admin(player_name) then return true end
+
+    -- Initialize mode if needed
+    if not placement_mode[player_name] then
+        placement_mode[player_name] = {
+            enabled = false,
+            tier = "random",
+            difficulty = "random",
+            category = "any",
+        }
+    end
+
+    local mode = placement_mode[player_name]
+
+    -- Handle dropdown changes (dropdown with index_event returns index as string)
+    if fields.tier then
+        local idx = tonumber(fields.tier)
+        if idx and TIER_VALUES[idx] then
+            mode.tier = TIER_VALUES[idx]
+        end
+    end
+    if fields.difficulty then
+        local idx = tonumber(fields.difficulty)
+        if idx and DIFFICULTY_VALUES[idx] then
+            mode.difficulty = DIFFICULTY_VALUES[idx]
+        end
+    end
+    if fields.category then
+        local idx = tonumber(fields.category)
+        if idx and CATEGORY_VALUES[idx] then
+            mode.category = CATEGORY_VALUES[idx]
+        end
+    end
+
+    -- Handle toggle button
+    if fields.toggle then
+        mode.enabled = not mode.enabled
+
+        local tier_text = mode.tier == "random" and "random tier" or mode.tier
+        if mode.enabled then
+            minetest.chat_send_player(player_name, minetest.colorize("#00FF00",
+                "*** Chest placement mode ENABLED! Punch blocks to place " .. tier_text .. " chests ***"))
+        else
+            minetest.chat_send_player(player_name, minetest.colorize("#FF6666",
+                "*** Chest placement mode DISABLED ***"))
+        end
+
+        -- Refresh formspec
+        minetest.show_formspec(player_name, "quest_helper:chestmode", get_chestmode_formspec(player_name))
+        return true
+    end
+
+    -- Close just closes
+    if fields.close or fields.quit then
+        return true
+    end
+
+    return true
+end)
+
+-- /chestmode command - Open placement mode GUI
+minetest.register_chatcommand("chestmode", {
+    params = "[on|off]",
+    description = "Open puzzle chest placement mode GUI, or toggle with on/off",
+    privs = {server = true},
+    func = function(name, param)
+        local player = minetest.get_player_by_name(name)
+        if not player then
+            return false, "Player not found"
+        end
+
+        -- Initialize mode if needed
+        if not placement_mode[name] then
+            placement_mode[name] = {
+                enabled = false,
+                tier = "random",
+                difficulty = "random",
+                category = "any",
+            }
+        end
+
+        -- Handle quick on/off
+        if param == "on" then
+            placement_mode[name].enabled = true
+            return true, "Chest placement mode ENABLED (random tier/difficulty). Punch blocks to place chests. Use /chestmode off to disable."
+        elseif param == "off" then
+            placement_mode[name].enabled = false
+            return true, "Chest placement mode DISABLED."
+        end
+
+        -- Show GUI
+        minetest.show_formspec(name, "quest_helper:chestmode", get_chestmode_formspec(name))
+        return true, "Opening chest placement mode settings..."
+    end,
+})
+
+-- Handle punch to place chest when in placement mode
+minetest.register_on_punchnode(function(pos, node, puncher, pointed_thing)
+    if not puncher then return end
+    local player_name = puncher:get_player_name()
+
+    -- Check if player is in placement mode
+    local mode = placement_mode[player_name]
+    if not mode or not mode.enabled then return end
+
+    -- Must be admin
+    if not is_admin(player_name) then return end
+
+    -- Don't place on puzzle chests (allow punching to check them)
+    if is_puzzle_chest(node.name) then return end
+
+    -- Get position above the punched node (place on top)
+    local place_pos = {x = pos.x, y = pos.y + 1, z = pos.z}
+
+    -- Check if position is air or replaceable
+    local target_node = minetest.get_node(place_pos)
+    if target_node.name ~= "air" and not minetest.registered_nodes[target_node.name].buildable_to then
+        minetest.chat_send_player(player_name, minetest.colorize("#FF6666", "Cannot place chest there - position is occupied"))
+        return
+    end
+
+    -- Resolve random selections
+    local actual_difficulty = mode.difficulty
+    if actual_difficulty == "random" then
+        actual_difficulty = ACTUAL_DIFFICULTIES[math.random(1, #ACTUAL_DIFFICULTIES)]
+    end
+
+    local actual_tier = mode.tier
+    if actual_tier == "random" then
+        actual_tier = ACTUAL_TIERS[math.random(1, #ACTUAL_TIERS)]
+    end
+
+    -- Get a random question
+    local q = get_random_question(actual_difficulty, mode.category)
+    if not q then
+        minetest.chat_send_player(player_name, minetest.colorize("#FF6666",
+            "No questions available for " .. actual_difficulty .. "/" .. mode.category .. "!"))
+        return
+    end
+
+    -- Place the chest
+    local tier = actual_tier
+    local node_name = "quest_helper:puzzle_chest_" .. tier
+    local tier_config = PUZZLE_CHEST_TIERS[tier]
+
+    minetest.set_node(place_pos, {name = node_name})
+
+    -- Set up metadata
+    local meta = minetest.get_meta(place_pos)
+    local inv = meta:get_inventory()
+    inv:set_size("main", 27)
+
+    meta:set_string("question", q.question)
+    meta:set_string("answer", q.answer)
+    meta:set_int("max_attempts", 3)
+    meta:set_string("tier", tier)
+    meta:set_string("infotext", tier_config.infotext)
+
+    -- Add loot based on tier
+    local loot = {}
+    if tier == "small" then
+        loot = {
+            {get_item("iron"), math.random(3, 8)},
+            {get_item("bread"), math.random(4, 10)},
+            {get_item("torch"), math.random(8, 16)},
+        }
+    elseif tier == "medium" then
+        loot = {
+            {get_item("iron"), math.random(8, 16)},
+            {get_item("gold"), math.random(4, 8)},
+            {get_item("diamond"), math.random(1, 3)},
+            {get_item("bread"), math.random(8, 16)},
+            {get_item("iron_sword"), 1},
+        }
+    elseif tier == "big" then
+        loot = {
+            {get_item("gold"), math.random(16, 32)},
+            {get_item("diamond"), math.random(4, 8)},
+            {get_item("emerald"), math.random(2, 5)},
+            {get_item("diamond_sword"), 1},
+            {get_item("diamond_pick"), 1},
+        }
+    elseif tier == "epic" then
+        loot = {
+            {get_item("diamondblock"), math.random(2, 5)},
+            {get_item("emerald"), math.random(8, 16)},
+            {get_item("diamond_sword"), 1},
+            {get_item("diamond_pick"), 1},
+            {get_item("helmet_diamond"), 1},
+            {get_item("chestplate_diamond"), 1},
+            {get_item("leggings_diamond"), 1},
+            {get_item("boots_diamond"), 1},
+        }
+    end
+
+    for _, item in ipairs(loot) do
+        if item[1] and item[2] then
+            inv:add_item("main", item[1] .. " " .. item[2])
+        end
+    end
+
+    -- Play placement sound
+    minetest.sound_play("default_place_node", {pos = place_pos, gain = 0.5}, true)
+
+    -- Notify admin
+    minetest.chat_send_player(player_name, minetest.colorize("#00FF00",
+        "Placed " .. tier_config.description .. " at " .. minetest.pos_to_string(place_pos)))
+    minetest.chat_send_player(player_name, minetest.colorize("#AAAAAA",
+        "Q: " .. q.question .. " | Category: " .. q.category))
+
+    minetest.log("action", "[quest_helper] " .. player_name .. " placed puzzle chest via chestmode at " ..
+        minetest.pos_to_string(place_pos) .. " (Question ID: " .. q.id .. ")")
+end)
+
+-- /reloadquestions - Hot reload questions from file
+minetest.register_chatcommand("reloadquestions", {
+    params = "",
+    description = "Reload questions from questions.json without restarting server",
+    privs = {server = true},
+    func = function(name, param)
+        local success, count = load_questions_from_file()
+        if success then
+            -- Reset used questions on reload
+            used_questions = {}
+            return true, "Reloaded " .. count .. " questions from questions.json"
+        else
+            return false, "Failed to reload questions - check server log for details"
+        end
+    end,
+})
+
+-- /questionstats - Show question pool statistics
+minetest.register_chatcommand("questionstats", {
+    params = "",
+    description = "Show statistics about the question pool",
+    privs = {server = true},
+    func = function(name, param)
+        local stats = {}
+        local total = 0
+        local used_count = 0
+
+        for difficulty, pool in pairs(question_pool) do
+            local count = #pool
+            total = total + count
+            stats[difficulty] = count
+        end
+
+        for _ in pairs(used_questions) do
+            used_count = used_count + 1
+        end
+
+        local lines = {"=== QUESTION POOL STATS ==="}
+        table.insert(lines, "Easy: " .. (stats.easy or 0) .. " questions")
+        table.insert(lines, "Medium: " .. (stats.medium or 0) .. " questions")
+        table.insert(lines, "Hard: " .. (stats.hard or 0) .. " questions")
+        table.insert(lines, "Expert: " .. (stats.expert or 0) .. " questions")
+        table.insert(lines, "Total: " .. total .. " questions")
+        table.insert(lines, "Used this session: " .. used_count)
+
+        return true, table.concat(lines, "\n")
+    end,
+})
+
+-- Clean up placement mode when player leaves
+minetest.register_on_leaveplayer(function(player)
+    local name = player:get_player_name()
+    placement_mode[name] = nil
+end)
+
 -- Print loaded message
-minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon, /vanish, /leaderboard, /myscore, /hud, /resetscores")
+minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon, /vanish, /leaderboard, /myscore, /hud, /resetscores, /chestmode, /reloadquestions, /questionstats")

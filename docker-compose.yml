@@ -25,6 +25,7 @@ services:
     volumes:
       - ./worlds/mineclonia:/luanti/luanti/worlds/world
       - ./config/mineclonia.conf:/luanti/luanti/config/luanti.conf
+      - ./tools/questions.json:/luanti/luanti/mods/quest_helper/questions.json:ro
     environment:
       - GAME_TO_PLAY=mineclonia
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
@@ -42,6 +43,7 @@ services:
     volumes:
       - ./worlds/voxelibre:/luanti/luanti/worlds/world
       - ./config/voxelibre.conf:/luanti/luanti/config/luanti.conf
+      - ./tools/questions.json:/luanti/luanti/mods/quest_helper/questions.json:ro
     environment:
       - GAME_TO_PLAY=voxelibre
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
