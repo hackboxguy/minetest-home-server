@@ -1214,155 +1214,215 @@ local function puzzle_explode(pos, player)
     minetest.remove_node(pos)
 end
 
--- Register puzzle chest node
--- Uses nodebox to create a 3D chest shape with gold/treasure appearance
-minetest.register_node("quest_helper:puzzle_chest", {
-    description = "Puzzle Chest",
-    tiles = {
-        "default_gold_block.png",  -- top (gold)
-        "default_gold_block.png",  -- bottom
-        "default_gold_block.png^[colorize:#804000:60",  -- right (darker gold)
-        "default_gold_block.png^[colorize:#804000:60",  -- left
-        "default_gold_block.png^[colorize:#804000:60",  -- back
-        "default_gold_block.png^[colorize:#FF0000:40",  -- front (reddish tint - locked!)
+-- Puzzle chest tier configurations with distinct colors
+-- small -> bronze, medium -> silver, big -> gold, epic -> diamond
+local PUZZLE_CHEST_TIERS = {
+    small = {
+        description = "Bronze Puzzle Chest",
+        infotext = "Bronze Puzzle Chest (Locked)",
+        -- Bronze/copper color scheme
+        base_texture = "default_gold_block.png^[colorize:#CD7F32:180",  -- Bronze
+        side_texture = "default_gold_block.png^[colorize:#8B4513:200",  -- Darker bronze
+        front_texture = "default_gold_block.png^[colorize:#A0522D:180", -- Sienna front
+        particle_color = "#CD7F32",
     },
-    drawtype = "nodebox",
-    paramtype = "light",
-    paramtype2 = "facedir",
-    node_box = {
-        type = "fixed",
-        fixed = {
-            -- Main chest body (bottom part)
-            {-0.4375, -0.5, -0.375, 0.4375, 0.125, 0.375},
-            -- Chest lid (top part, slightly smaller)
-            {-0.4375, 0.125, -0.375, 0.4375, 0.375, 0.375},
-            -- Lock/latch on front
-            {-0.0625, 0.0, 0.375, 0.0625, 0.25, 0.4375},
+    medium = {
+        description = "Silver Puzzle Chest",
+        infotext = "Silver Puzzle Chest (Locked)",
+        -- Silver/iron color scheme
+        base_texture = "default_gold_block.png^[colorize:#C0C0C0:200",  -- Silver
+        side_texture = "default_gold_block.png^[colorize:#808080:180",  -- Gray sides
+        front_texture = "default_gold_block.png^[colorize:#A9A9A9:180", -- Dark gray front
+        particle_color = "#C0C0C0",
+    },
+    big = {
+        description = "Gold Puzzle Chest",
+        infotext = "Gold Puzzle Chest (Locked)",
+        -- Gold color scheme (original)
+        base_texture = "default_gold_block.png",  -- Gold
+        side_texture = "default_gold_block.png^[colorize:#804000:60",  -- Darker gold
+        front_texture = "default_gold_block.png^[colorize:#FF8C00:40", -- Orange-gold front
+        particle_color = "#FFD700",
+    },
+    epic = {
+        description = "Diamond Puzzle Chest",
+        infotext = "Diamond Puzzle Chest (Locked)",
+        -- Diamond/cyan color scheme
+        base_texture = "default_gold_block.png^[colorize:#00FFFF:180",  -- Cyan/diamond
+        side_texture = "default_gold_block.png^[colorize:#4169E1:160",  -- Royal blue sides
+        front_texture = "default_gold_block.png^[colorize:#00CED1:160", -- Dark turquoise front
+        particle_color = "#00FFFF",
+    },
+}
+
+-- Helper to check if a node is any puzzle chest variant
+local function is_puzzle_chest(node_name)
+    return node_name:match("^quest_helper:puzzle_chest_")
+end
+
+-- Get tier from node name
+local function get_tier_from_node(node_name)
+    return node_name:match("^quest_helper:puzzle_chest_(%w+)$")
+end
+
+-- Function to register a puzzle chest variant for a specific tier
+local function register_puzzle_chest(tier, config)
+    local node_name = "quest_helper:puzzle_chest_" .. tier
+
+    minetest.register_node(node_name, {
+        description = config.description,
+        tiles = {
+            config.base_texture,   -- top
+            config.base_texture,   -- bottom
+            config.side_texture,   -- right
+            config.side_texture,   -- left
+            config.side_texture,   -- back
+            config.front_texture,  -- front
         },
-    },
-    selection_box = {
-        type = "fixed",
-        fixed = {-0.4375, -0.5, -0.375, 0.4375, 0.375, 0.4375},
-    },
-    groups = {choppy = 2, oddly_breakable_by_hand = 2, handy = 1, axey = 1},
-    _mcl_hardness = 2.5,
-    _mcl_blast_resistance = 2.5,
+        drawtype = "nodebox",
+        paramtype = "light",
+        paramtype2 = "facedir",
+        node_box = {
+            type = "fixed",
+            fixed = {
+                -- Main chest body (bottom part)
+                {-0.4375, -0.5, -0.375, 0.4375, 0.125, 0.375},
+                -- Chest lid (top part, slightly smaller)
+                {-0.4375, 0.125, -0.375, 0.4375, 0.375, 0.375},
+                -- Lock/latch on front
+                {-0.0625, 0.0, 0.375, 0.0625, 0.25, 0.4375},
+            },
+        },
+        selection_box = {
+            type = "fixed",
+            fixed = {-0.4375, -0.5, -0.375, 0.4375, 0.375, 0.4375},
+        },
+        groups = {choppy = 2, oddly_breakable_by_hand = 2, handy = 1, axey = 1},
+        _mcl_hardness = 2.5,
+        _mcl_blast_resistance = 2.5,
 
-    on_construct = function(pos)
-        local meta = minetest.get_meta(pos)
-        local inv = meta:get_inventory()
-        inv:set_size("main", 27)
-        meta:set_string("question", "What is the answer?")
-        meta:set_string("answer", "secret")
-        meta:set_int("max_attempts", 3)
-        meta:set_string("infotext", "Puzzle Chest (Locked)")
-    end,
+        on_construct = function(pos)
+            local meta = minetest.get_meta(pos)
+            local inv = meta:get_inventory()
+            inv:set_size("main", 27)
+            meta:set_string("question", "What is the answer?")
+            meta:set_string("answer", "secret")
+            meta:set_int("max_attempts", 3)
+            meta:set_string("tier", tier)
+            meta:set_string("infotext", config.infotext)
+        end,
 
-    on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
-        if not clicker then return end
-        local player_name = clicker:get_player_name()
-        local meta = minetest.get_meta(pos)
+        on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
+            if not clicker then return end
+            local player_name = clicker:get_player_name()
+            local meta = minetest.get_meta(pos)
 
-        -- Admin bypass: players with server privilege skip the puzzle
-        if is_admin(player_name) then
-            minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "[Admin] Bypassing puzzle - showing chest contents"))
-            -- Show regular chest formspec
-            local inv_formspec = "formspec_version[4]" ..
-                                "size[9,8.75]" ..
-                                "label[0.5,0.5;Puzzle Chest (Admin Access)]" ..
-                                "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
-                                "list[current_player;main;0.5,4.75;9,3;9]" ..
-                                "list[current_player;main;0.5,7.75;9,1;]" ..
-                                "listring[]"
-            minetest.show_formspec(player_name, "quest_helper:puzzle_chest_admin", inv_formspec)
-            return
-        end
+            -- Admin bypass: players with server privilege skip the puzzle
+            if is_admin(player_name) then
+                minetest.chat_send_player(player_name, minetest.colorize("#00FF00", "[Admin] Bypassing puzzle - showing chest contents"))
+                -- Show regular chest formspec
+                local inv_formspec = "formspec_version[4]" ..
+                                    "size[9,8.75]" ..
+                                    "label[0.5,0.5;" .. config.description .. " (Admin Access)]" ..
+                                    "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
+                                    "list[current_player;main;0.5,4.75;9,3;9]" ..
+                                    "list[current_player;main;0.5,7.75;9,1;]" ..
+                                    "listring[]"
+                minetest.show_formspec(player_name, "quest_helper:puzzle_chest_admin", inv_formspec)
+                return
+            end
 
-        -- Check if already unlocked by this player
-        local unlocked_key = "unlocked_" .. player_name
-        if meta:get_int(unlocked_key) == 1 then
-            -- Already unlocked, show chest inventory
-            local inv_formspec = "formspec_version[4]" ..
-                                "size[9,8.75]" ..
-                                "label[0.5,0.5;Puzzle Chest (Unlocked)]" ..
-                                "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
-                                "list[current_player;main;0.5,4.75;9,3;9]" ..
-                                "list[current_player;main;0.5,7.75;9,1;]" ..
-                                "listring[]"
-            minetest.show_formspec(player_name, "quest_helper:puzzle_chest_unlocked", inv_formspec)
-            return
-        end
+            -- Check if already unlocked by this player
+            local unlocked_key = "unlocked_" .. player_name
+            if meta:get_int(unlocked_key) == 1 then
+                -- Already unlocked, show chest inventory
+                local inv_formspec = "formspec_version[4]" ..
+                                    "size[9,8.75]" ..
+                                    "label[0.5,0.5;" .. config.description .. " (Unlocked)]" ..
+                                    "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
+                                    "list[current_player;main;0.5,4.75;9,3;9]" ..
+                                    "list[current_player;main;0.5,7.75;9,1;]" ..
+                                    "listring[]"
+                minetest.show_formspec(player_name, "quest_helper:puzzle_chest_unlocked", inv_formspec)
+                return
+            end
 
-        -- Show puzzle formspec
-        local question = meta:get_string("question")
-        local attempt_key = get_attempt_key(player_name, pos)
-        local attempts = puzzle_attempts[attempt_key] or 0
-        local max_attempts = meta:get_int("max_attempts")
+            -- Show puzzle formspec
+            local question = meta:get_string("question")
+            local attempt_key = get_attempt_key(player_name, pos)
+            local attempts = puzzle_attempts[attempt_key] or 0
+            local max_attempts = meta:get_int("max_attempts")
 
-        -- Add attempt warning to question
-        local full_question = question
-        if attempts > 0 then
-            full_question = question .. " (Attempts: " .. attempts .. "/" .. max_attempts .. ")"
-        end
+            -- Add attempt warning to question
+            local full_question = question
+            if attempts > 0 then
+                full_question = question .. " (Attempts: " .. attempts .. "/" .. max_attempts .. ")"
+            end
 
-        -- Store position in player metadata for formspec handler
-        local player_meta = clicker:get_meta()
-        player_meta:set_string("puzzle_chest_pos", minetest.pos_to_string(pos))
+            -- Store position in player metadata for formspec handler
+            local player_meta = clicker:get_meta()
+            player_meta:set_string("puzzle_chest_pos", minetest.pos_to_string(pos))
 
-        minetest.show_formspec(player_name, "quest_helper:puzzle_chest", get_puzzle_formspec(pos, full_question))
-    end,
+            minetest.show_formspec(player_name, "quest_helper:puzzle_chest", get_puzzle_formspec(pos, full_question))
+        end,
 
-    -- Prevent breaking by non-admins (optional security)
-    can_dig = function(pos, player)
-        if not player then return false end
-        return is_admin(player:get_player_name())
-    end,
+        -- Prevent breaking by non-admins (optional security)
+        can_dig = function(pos, player)
+            if not player then return false end
+            return is_admin(player:get_player_name())
+        end,
 
-    -- Auto-vanish when chest is emptied after being unlocked
-    on_metadata_inventory_take = function(pos, listname, index, stack, player)
-        if not player then return end
-        local player_name = player:get_player_name()
-        local meta = minetest.get_meta(pos)
+        -- Auto-vanish when chest is emptied after being unlocked
+        on_metadata_inventory_take = function(pos, listname, index, stack, player)
+            if not player then return end
+            local player_name = player:get_player_name()
+            local meta = minetest.get_meta(pos)
 
-        -- Check if chest is now empty
-        local inv = meta:get_inventory()
-        if inv:is_empty("main") then
-            -- Chest is empty - make it vanish with effect
-            minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
-                " emptied by " .. player_name .. " - removing")
+            -- Check if chest is now empty
+            local inv = meta:get_inventory()
+            if inv:is_empty("main") then
+                -- Chest is empty - make it vanish with effect
+                minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
+                    " emptied by " .. player_name .. " - removing")
 
-            -- Play a magical vanish sound
-            minetest.sound_play("mcl_potions_brewing_finished", {
-                pos = pos, gain = 0.8, max_hear_distance = 16
-            }, true)
+                -- Play a magical vanish sound
+                minetest.sound_play("mcl_potions_brewing_finished", {
+                    pos = pos, gain = 0.8, max_hear_distance = 16
+                }, true)
 
-            -- Add sparkle particles (using generic particle texture)
-            minetest.add_particlespawner({
-                amount = 32,
-                time = 0.5,
-                minpos = vector.subtract(pos, 0.5),
-                maxpos = vector.add(pos, 0.5),
-                minvel = {x = -1, y = 1, z = -1},
-                maxvel = {x = 1, y = 3, z = 1},
-                minacc = {x = 0, y = -2, z = 0},
-                maxacc = {x = 0, y = -2, z = 0},
-                minexptime = 0.5,
-                maxexptime = 1.5,
-                minsize = 1,
-                maxsize = 2,
-                texture = "mcl_particles_crit.png^[colorize:#FFD700:200",
-                glow = 14,
-            })
+                -- Add sparkle particles with tier-specific color
+                minetest.add_particlespawner({
+                    amount = 32,
+                    time = 0.5,
+                    minpos = vector.subtract(pos, 0.5),
+                    maxpos = vector.add(pos, 0.5),
+                    minvel = {x = -1, y = 1, z = -1},
+                    maxvel = {x = 1, y = 3, z = 1},
+                    minacc = {x = 0, y = -2, z = 0},
+                    maxacc = {x = 0, y = -2, z = 0},
+                    minexptime = 0.5,
+                    maxexptime = 1.5,
+                    minsize = 1,
+                    maxsize = 2,
+                    texture = "mcl_particles_crit.png^[colorize:" .. config.particle_color .. ":200",
+                    glow = 14,
+                })
 
-            -- Remove the chest
-            minetest.remove_node(pos)
+                -- Remove the chest
+                minetest.remove_node(pos)
 
-            -- Notify the player
-            minetest.chat_send_player(player_name,
-                minetest.colorize("#FFD700", "*** The puzzle chest vanishes in a puff of sparkles! ***"))
-        end
-    end,
-})
+                -- Notify the player
+                minetest.chat_send_player(player_name,
+                    minetest.colorize(config.particle_color, "*** The " .. tier .. " puzzle chest vanishes in a puff of sparkles! ***"))
+            end
+        end,
+    })
+end
+
+-- Register all puzzle chest variants
+for tier, config in pairs(PUZZLE_CHEST_TIERS) do
+    register_puzzle_chest(tier, config)
+end
 
 -- Handle formspec submission
 minetest.register_on_player_receive_fields(function(player, formname, fields)
@@ -1385,9 +1445,9 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
         local pos = minetest.string_to_pos(pos_str)
         if not pos then return true end
 
-        -- Verify node still exists
+        -- Verify node still exists (check for any puzzle chest variant)
         local node = minetest.get_node(pos)
-        if node.name ~= "quest_helper:puzzle_chest" then
+        if not is_puzzle_chest(node.name) then
             minetest.chat_send_player(player_name, "The puzzle chest is no longer there!")
             return true
         end
@@ -1525,6 +1585,16 @@ minetest.register_chatcommand("puzzlechest", {
             return false, "Both question and answer are required"
         end
 
+        -- Validate and normalize tier
+        local tier_lower = tier:lower()
+        if not PUZZLE_CHEST_TIERS[tier_lower] then
+            return false, "Invalid tier. Use: small, medium, big, or epic"
+        end
+
+        -- Get the node name for this tier
+        local node_name = "quest_helper:puzzle_chest_" .. tier_lower
+        local tier_config = PUZZLE_CHEST_TIERS[tier_lower]
+
         -- Ensure the chunk is loaded before placing (critical for remote CLI commands)
         ensure_chunk_loaded(pos.x, pos.y, pos.z)
 
@@ -1535,18 +1605,18 @@ minetest.register_chatcommand("puzzlechest", {
 
             -- Check what's at the position before placing
             local old_node = minetest.get_node(pos)
-            minetest.log("action", "[quest_helper] Placing puzzle chest at " .. minetest.pos_to_string(pos) ..
+            minetest.log("action", "[quest_helper] Placing " .. tier_lower .. " puzzle chest at " .. minetest.pos_to_string(pos) ..
                 " (replacing: " .. old_node.name .. ")")
 
-            -- Place the puzzle chest
-            minetest.set_node(pos, {name = "quest_helper:puzzle_chest"})
+            -- Place the tier-specific puzzle chest
+            minetest.set_node(pos, {name = node_name})
 
             -- Verify placement
             local new_node = minetest.get_node(pos)
-            if new_node.name ~= "quest_helper:puzzle_chest" then
+            if new_node.name ~= node_name then
                 minetest.log("error", "[quest_helper] Failed to place puzzle chest! Got: " .. new_node.name)
             else
-                minetest.log("action", "[quest_helper] Puzzle chest successfully placed")
+                minetest.log("action", "[quest_helper] " .. tier_config.description .. " successfully placed")
             end
         end)
 
@@ -1561,11 +1631,10 @@ minetest.register_chatcommand("puzzlechest", {
             meta:set_string("answer", answer)
             meta:set_int("max_attempts", 3)
             meta:set_string("tier", tier_lower)  -- Store tier for point calculation
-            meta:set_string("infotext", "Puzzle Chest (Locked)")
+            meta:set_string("infotext", tier_config.infotext)
 
             -- Add loot based on tier
             local loot = {}
-            local tier_lower = tier:lower()
 
             if tier_lower == "small" then
                 loot = {
@@ -1627,7 +1696,7 @@ minetest.register_chatcommand("puzzlechest", {
             warning = " WARNING: Y=" .. pos.y .. " may be underground! Surface is typically Y=60+. Consider using ~ for auto ground level."
         end
 
-        return true, "Placed " .. tier .. " puzzle chest at (" .. pos.x .. "," .. pos.y .. "," .. pos.z ..
+        return true, "Placed " .. tier_config.description .. " at (" .. pos.x .. "," .. pos.y .. "," .. pos.z ..
             ") (Question: " .. question .. ")" .. warning
     end,
 })
@@ -1704,32 +1773,47 @@ minetest.register_chatcommand("vanish", {
             -- Store original properties
             original_properties[name] = player:get_properties()
 
-            -- Make player invisible - comprehensive property set
-            player:set_properties({
-                visual_size = {x = 0, y = 0, z = 0},  -- Shrink to invisible
-                makes_footstep_sound = false,  -- Silent footsteps
-                pointable = false,  -- Can't be targeted/selected by others
-                show_on_minimap = false,  -- Hide from minimap
-                is_visible = false,  -- Explicitly set invisible
-                nametag = "",  -- Empty nametag
-                nametag_color = {a = 0, r = 0, g = 0, b = 0},
-                nametag_bgcolor = {a = 0, r = 0, g = 0, b = 0},
-                infotext = "",  -- Clear any hover text
-            })
+            -- Function to apply all vanish properties
+            local function apply_vanish(p, pname)
+                if not p or not p:is_player() then return end
+                if not vanished_players[pname] then return end  -- Unvanished before delay
 
-            -- Hide nametag completely using nametag attributes API
-            player:set_nametag_attributes({
-                color = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent text
-                bgcolor = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent background
-                text = "",  -- Empty string
-            })
+                -- Make player invisible - comprehensive property set
+                p:set_properties({
+                    visual_size = {x = 0, y = 0, z = 0},  -- Shrink to invisible
+                    makes_footstep_sound = false,  -- Silent footsteps
+                    pointable = false,  -- Can't be targeted/selected by others
+                    show_on_minimap = false,  -- Hide from minimap
+                    is_visible = false,  -- Explicitly set invisible
+                    nametag = " ",  -- Space instead of empty (some engines handle empty differently)
+                    nametag_color = {a = 0, r = 0, g = 0, b = 0},
+                    nametag_bgcolor = {a = 0, r = 0, g = 0, b = 0},
+                    infotext = "",  -- Clear any hover text
+                })
 
-            -- Try to hide from any attached child objects (some games use these for names)
-            for _, child in pairs(player:get_children()) do
-                if child and child:get_luaentity() then
-                    child:set_properties({is_visible = false})
+                -- Hide nametag completely using nametag attributes API
+                p:set_nametag_attributes({
+                    color = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent text
+                    bgcolor = {a = 0, r = 0, g = 0, b = 0},  -- Fully transparent background
+                    text = " ",  -- Single space
+                })
+
+                -- Try to hide any attached child objects (some games use these for names)
+                for _, child in pairs(p:get_children()) do
+                    if child and child:get_luaentity() then
+                        child:set_properties({is_visible = false})
+                    end
                 end
             end
+
+            -- Apply immediately
+            apply_vanish(player, name)
+
+            -- Re-apply after delays to override any game systems that reset properties
+            minetest.after(0.1, function() apply_vanish(minetest.get_player_by_name(name), name) end)
+            minetest.after(0.5, function() apply_vanish(minetest.get_player_by_name(name), name) end)
+            minetest.after(1.0, function() apply_vanish(minetest.get_player_by_name(name), name) end)
+            minetest.after(2.0, function() apply_vanish(minetest.get_player_by_name(name), name) end)
 
             minetest.chat_send_player(name, minetest.colorize("#FFD700", "*** You are now INVISIBLE to other players ***"))
             minetest.chat_send_player(name, minetest.colorize("#AAAAAA", "Use /vanish again to become visible"))
@@ -1743,32 +1827,6 @@ minetest.register_on_leaveplayer(function(player)
     local name = player:get_player_name()
     vanished_players[name] = nil
     original_properties[name] = nil
-end)
-
--- Continuously enforce vanish state (some games/mods reset player properties)
-local vanish_timer = 0
-minetest.register_globalstep(function(dtime)
-    vanish_timer = vanish_timer + dtime
-    if vanish_timer < 0.5 then return end  -- Check every 0.5 seconds
-    vanish_timer = 0
-
-    for name, _ in pairs(vanished_players) do
-        local player = minetest.get_player_by_name(name)
-        if player then
-            -- Reapply invisibility
-            player:set_properties({
-                visual_size = {x = 0, y = 0, z = 0},
-                is_visible = false,
-                nametag = "",
-                nametag_color = {a = 0, r = 0, g = 0, b = 0},
-            })
-            player:set_nametag_attributes({
-                color = {a = 0, r = 0, g = 0, b = 0},
-                bgcolor = {a = 0, r = 0, g = 0, b = 0},
-                text = "",
-            })
-        end
-    end
 end)
 
 -- ============================================
