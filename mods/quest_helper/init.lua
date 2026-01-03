@@ -2650,7 +2650,91 @@ local SCATTER_MIN_SPACING = 8       -- Minimum blocks between chests
 local SCATTER_MIN_HEIGHT = 0        -- Minimum Y level (avoid deep underground)
 local SCATTER_MAX_COUNT = 100       -- Maximum chests per scatter
 local SCATTER_CONCEALMENT_THRESHOLD = 3  -- Minimum score to place
-local SCATTER_MAX_RETRIES = 10      -- Retries per chest for finding good spot
+local SCATTER_MAX_RETRIES = 50      -- Retries per chest for finding good spot (increased for unloaded chunks)
+
+-- Calculate exposure score for a position (opposite of concealment)
+-- Higher score = more visible/easy to find spot
+local function calculate_exposure_score(pos)
+    local score = 0
+    local x, y, z = pos.x, pos.y, pos.z
+
+    -- Check for clear sky (no solid blocks above within 16 blocks)
+    local has_sky = true
+    for check_y = y + 1, y + 16 do
+        local node = minetest.get_node({x = x, y = check_y, z = z})
+        local name = node.name
+        if name ~= "air" and name ~= "ignore" and not name:find("leaves") and not name:find("leaf") then
+            has_sky = false
+            break
+        end
+    end
+
+    if has_sky then
+        score = score + 5  -- Clear sky above - very visible
+    end
+
+    -- Bonus for being near a tree trunk (recognizable landmark)
+    local near_tree = false
+    for dx = -2, 2 do
+        for dz = -2, 2 do
+            if not near_tree then
+                local check_pos = {x = x + dx, y = y, z = z + dz}
+                local node = minetest.get_node(check_pos)
+                if node.name:find("tree") or node.name:find("trunk") or node.name:find("log") then
+                    near_tree = true
+                    score = score + 4  -- Near tree - easy landmark
+                end
+            end
+        end
+    end
+
+    -- Bonus for being on a hill (higher than neighbors)
+    local directions = {
+        {x = 1, z = 0}, {x = -1, z = 0},
+        {x = 0, z = 1}, {x = 0, z = -1},
+    }
+    local higher_count = 0
+    for _, dir in ipairs(directions) do
+        local neighbor_y = find_ground_level(x + dir.x * 3, z + dir.z * 3)
+        if neighbor_y and neighbor_y < y then
+            higher_count = higher_count + 1
+        end
+    end
+    if higher_count >= 2 then
+        score = score + 3  -- On a hill - visible from distance
+    end
+
+    -- Bonus for open area (no walls blocking view)
+    local wall_count = 0
+    for _, dir in ipairs(directions) do
+        local check_pos = {x = x + dir.x, y = y, z = z + dir.z}
+        local node = minetest.get_node(check_pos)
+        local name = node.name
+        if name ~= "air" and name ~= "ignore" and
+           not name:find("flower") and not name:find("tallgrass") and
+           not name:find("fern") and not name:find("bush") then
+            wall_count = wall_count + 1
+        end
+    end
+    if wall_count == 0 then
+        score = score + 3  -- No walls - very open
+    elseif wall_count == 1 then
+        score = score + 2  -- One wall - corner/edge visible
+    end
+
+    -- Penalty for being underground (below sea level or in dark)
+    if y < 10 then
+        score = score - 10  -- Too low, likely underground
+    end
+
+    -- Bonus for being in a biome with flowers/grass (nice open areas)
+    local ground = minetest.get_node({x = x, y = y - 1, z = z})
+    if ground.name:find("grass") then
+        score = score + 2  -- Grassy area - typically open
+    end
+
+    return score
+end
 
 -- Calculate concealment score for a position
 -- Higher score = better hiding spot
@@ -2859,14 +2943,14 @@ end
 
 -- Try to find ground level quickly, returns nil if chunk not loaded
 local function find_ground_level_fast(x, z)
-    -- Quick check if area is loaded
-    local test_node = minetest.get_node({x = x, y = 64, z = z})
+    -- Quick check if area is loaded (check at y=30 which is more likely loaded near player)
+    local test_node = minetest.get_node({x = x, y = 30, z = z})
     if test_node.name == "ignore" then
         return nil  -- Chunk not loaded
     end
 
-    -- Scan from y=100 down
-    for y = 100, -20, -1 do
+    -- Scan from y=120 down (increased to handle mountainous terrain)
+    for y = 120, -20, -1 do
         local node = minetest.get_node({x = x, y = y, z = z})
         local name = node.name
 
@@ -2889,8 +2973,8 @@ end
 
 -- /scatter command - Distribute chests randomly in an area
 minetest.register_chatcommand("scatter", {
-    params = "<radius> <count>",
-    description = "Scatter puzzle chests randomly in a radius (max 200). Uses current /chestmode settings. Example: /scatter 50 20",
+    params = "<radius> <count> [exposed]",
+    description = "Scatter puzzle chests randomly in a radius (max 200). Uses current /chestmode settings. Add 'exposed' to place chests in visible locations. Example: /scatter 50 20 exposed",
     privs = {server = true},
     func = function(name, param)
         local player = minetest.get_player_by_name(name)
@@ -2898,13 +2982,14 @@ minetest.register_chatcommand("scatter", {
             return false, "Player not found"
         end
 
-        -- Parse parameters
-        local radius, count = param:match("^(%d+)%s+(%d+)$")
+        -- Parse parameters (with optional exposed flag)
+        local radius, count, exposed_flag = param:match("^(%d+)%s+(%d+)%s*(%w*)$")
         radius = tonumber(radius)
         count = tonumber(count)
+        local exposed_mode = exposed_flag and exposed_flag:lower() == "exposed"
 
         if not radius or not count then
-            return false, "Usage: /scatter <radius> <count>  Example: /scatter 50 20"
+            return false, "Usage: /scatter <radius> <count> [exposed]  Example: /scatter 50 20 exposed"
         end
 
         if radius < 10 then
@@ -2952,8 +3037,9 @@ minetest.register_chatcommand("scatter", {
         local center = vector.round(player:get_pos())
 
         -- Start scatter process
+        local mode_str = exposed_mode and "EXPOSED (visible locations)" or "hidden (concealed)"
         minetest.chat_send_player(name, minetest.colorize("#FFD700",
-            "Starting scatter: " .. count .. " chests within " .. radius .. " blocks..."))
+            "Starting scatter: " .. count .. " chests within " .. radius .. " blocks (" .. mode_str .. ")..."))
         minetest.chat_send_player(name, minetest.colorize("#AAAAAA",
             "Settings: tier=" .. mode.tier .. ", difficulty=" .. mode.difficulty .. ", category=" .. mode.category))
 
@@ -2983,11 +3069,14 @@ minetest.register_chatcommand("scatter", {
                 if failed_count > 0 then
                     msg = msg .. " (" .. failed_count .. " failed)"
                 end
-                if exposed_count > 0 then
-                    msg = msg .. " (" .. exposed_count .. " exposed)"
+                if exposed_mode then
+                    msg = msg .. " (" .. exposed_count .. " in visible spots)"
+                elseif exposed_count > 0 then
+                    msg = msg .. " (" .. exposed_count .. " exposed - may be easy to find)"
                 end
                 minetest.chat_send_player(name, minetest.colorize("#00FF00", msg))
-                minetest.log("action", "[quest_helper] " .. name .. " scattered " .. placed_count .. " chests, radius=" .. radius)
+                local mode_log = exposed_mode and ", mode=exposed" or ""
+                minetest.log("action", "[quest_helper] " .. name .. " scattered " .. placed_count .. " chests, radius=" .. radius .. mode_log)
                 return
             end
 
@@ -3001,26 +3090,51 @@ minetest.register_chatcommand("scatter", {
             local best_pos = nil
             local best_score = -999
             local retry_this_chest = 0
+            local debug_stats = {unloaded = 0, height_skip = 0, invalid = 0, spacing = 0, tried = 0}
 
             for retry = 1, SCATTER_MAX_RETRIES do
                 retry_this_chest = retry
+                debug_stats.tried = retry
 
                 -- Generate random position in circle
+                -- Bias towards closer positions where chunks are more likely loaded
                 local angle = math.random() * 2 * math.pi
-                local dist = math.sqrt(math.random()) * radius
+                -- Use min_dist to avoid placing too close to player
+                local min_dist = math.min(15, radius * 0.1)
+                -- Bias distribution towards closer positions (exponential decay)
+                local raw_dist = math.random() ^ 0.5 * (radius - min_dist) + min_dist
+                -- Sometimes try farther positions too (20% chance)
+                local dist = math.random() < 0.2 and (math.random() * radius) or raw_dist
                 local try_x = center.x + math.floor(dist * math.cos(angle))
                 local try_z = center.z + math.floor(dist * math.sin(angle))
 
                 -- Find ground level (fast version that returns nil if not loaded)
                 local ground_y = find_ground_level_fast(try_x, try_z)
 
-                if ground_y then
+                if not ground_y then
+                    debug_stats.unloaded = debug_stats.unloaded + 1
+                elseif exposed_mode and ground_y < 5 then
+                    -- In exposed mode, skip positions below sea level (likely underwater)
+                    debug_stats.height_skip = debug_stats.height_skip + 1
+                else
                     local try_pos = {x = try_x, y = ground_y + 1, z = try_z}
-
                     -- Check validity
                     local valid, reason = is_valid_scatter_position(try_pos)
-                    if valid and check_spacing(try_pos, placed_positions) then
-                        local score = calculate_concealment_score(try_pos)
+                    if not valid then
+                        debug_stats.invalid = debug_stats.invalid + 1
+                    elseif not check_spacing(try_pos, placed_positions) then
+                        debug_stats.spacing = debug_stats.spacing + 1
+                    else
+                        -- Use exposure or concealment score based on mode
+                        local score
+                        local threshold
+                        if exposed_mode then
+                            score = calculate_exposure_score(try_pos)
+                            threshold = 5  -- Exposure threshold (clear sky + one bonus)
+                        else
+                            score = calculate_concealment_score(try_pos)
+                            threshold = SCATTER_CONCEALMENT_THRESHOLD
+                        end
 
                         if score > best_score then
                             best_score = score
@@ -3028,25 +3142,51 @@ minetest.register_chatcommand("scatter", {
                         end
 
                         -- If score meets threshold, use it immediately
-                        if score >= SCATTER_CONCEALMENT_THRESHOLD then
+                        if score >= threshold then
                             break
                         end
                     end
                 end
             end
 
+            -- Debug: log failure stats for this chest
+            if not best_pos then
+                minetest.log("action", "[quest_helper] Scatter debug chest #" .. current_chest ..
+                    ": unloaded=" .. debug_stats.unloaded ..
+                    ", height_skip=" .. debug_stats.height_skip ..
+                    ", invalid=" .. debug_stats.invalid ..
+                    ", spacing=" .. debug_stats.spacing ..
+                    ", tried=" .. debug_stats.tried)
+            end
+
             -- Place chest at best position found
             if best_pos then
-                local success, result = place_scatter_chest(best_pos, mode, name)
+                local success, tier = place_scatter_chest(best_pos, mode, name)
                 if success then
                     table.insert(placed_positions, best_pos)
                     placed_count = placed_count + 1
 
-                    if best_score < SCATTER_CONCEALMENT_THRESHOLD then
-                        exposed_count = exposed_count + 1
+                    -- Show placement position to player
+                    local dist = math.floor(vector.distance(center, best_pos))
+                    minetest.chat_send_player(name, minetest.colorize("#88FF88",
+                        "  #" .. placed_count .. " " .. (tier or "?") .. " chest at (" ..
+                        best_pos.x .. ", " .. best_pos.y .. ", " .. best_pos.z .. ") - " ..
+                        dist .. " blocks away, score=" .. best_score))
+
+                    -- Track exposed/concealed count based on mode
+                    if exposed_mode then
+                        if best_score >= 5 then
+                            exposed_count = exposed_count + 1  -- Successfully exposed
+                        end
+                    else
+                        if best_score < SCATTER_CONCEALMENT_THRESHOLD then
+                            exposed_count = exposed_count + 1  -- Accidentally exposed
+                        end
                     end
                 else
                     failed_count = failed_count + 1
+                    minetest.chat_send_player(name, minetest.colorize("#FF8888",
+                        "  Failed to place chest (no questions available?)"))
                 end
             else
                 failed_count = failed_count + 1
