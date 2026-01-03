@@ -25,6 +25,15 @@ local TIER_POINTS = {
     epic = 100,
 }
 
+-- Timeout (in seconds) for solved chests before auto-drop and vanish
+-- If player solves but doesn't collect all items, chest will vanish after this time
+local SOLVED_CHEST_TIMEOUT = {
+    small = 45,   -- 45 seconds
+    medium = 60,  -- 60 seconds
+    big = 90,     -- 90 seconds
+    epic = 20,    -- 20 seconds (epic already has tight timer)
+}
+
 -- Track HUD elements per player
 local player_hud_ids = {}
 
@@ -1400,6 +1409,11 @@ local function register_puzzle_chest(tier, config)
             local player_name = player:get_player_name()
             local meta = minetest.get_meta(pos)
 
+            -- Debug: log every take event
+            minetest.log("action", "[quest_helper] " .. tier .. " chest: " .. player_name ..
+                " took " .. stack:get_name() .. " x" .. stack:get_count() ..
+                " from slot " .. index .. " at " .. minetest.pos_to_string(pos))
+
             -- Check if chest is now empty
             local inv = meta:get_inventory()
 
@@ -1414,102 +1428,48 @@ local function register_puzzle_chest(tier, config)
                 end
             end
 
+            -- Debug: log inventory state
+            local is_empty = inv:is_empty("main")
+            minetest.log("action", "[quest_helper] " .. tier .. " chest inventory: " ..
+                remaining_count .. " items remaining, is_empty=" .. tostring(is_empty))
+
             if remaining_count > 0 then
                 minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
                     " still has " .. remaining_count .. " items remaining")
 
-                -- EPIC CHEST SPECIAL: Drop remaining items after timeout
-                if tier == "epic" then
-                    local loot_started = meta:get_int("loot_started")
-                    if loot_started == 0 then
-                        -- First take - start the loot timer
-                        meta:set_int("loot_started", os.time())
-                        minetest.chat_send_player(player_name,
-                            minetest.colorize("#FF00FF", "*** EPIC CHEST: You have 20 seconds to collect items! ***"))
+                -- Show countdown for all tiers (timer was started when puzzle was solved)
+                local solve_time = meta:get_int("solve_time")
+                local solve_timeout = meta:get_int("solve_timeout")
 
-                        -- Schedule auto-drop after 20 seconds
-                        local pos_copy = vector.copy(pos)
-                        minetest.after(20, function()
-                            -- Check if chest still exists
-                            local node = minetest.get_node(pos_copy)
-                            if node.name ~= "quest_helper:puzzle_chest_epic" then
-                                return  -- Chest already gone
-                            end
+                if solve_time > 0 and solve_timeout > 0 then
+                    local elapsed = os.time() - solve_time
+                    local remaining_time = math.max(0, solve_timeout - elapsed)
 
-                            local chest_meta = minetest.get_meta(pos_copy)
-                            local chest_inv = chest_meta:get_inventory()
-
-                            -- Drop all remaining items
-                            local dropped_count = 0
-                            for i = 1, chest_inv:get_size("main") do
-                                local item_stack = chest_inv:get_stack("main", i)
-                                if not item_stack:is_empty() then
-                                    -- Drop item above chest position
-                                    local drop_pos = vector.add(pos_copy, {x = math.random() - 0.5, y = 0.5, z = math.random() - 0.5})
-                                    minetest.add_item(drop_pos, item_stack)
-                                    dropped_count = dropped_count + 1
-                                end
-                            end
-
-                            if dropped_count > 0 then
-                                minetest.log("action", "[quest_helper] Epic chest at " .. minetest.pos_to_string(pos_copy) ..
-                                    " timed out - dropped " .. dropped_count .. " items")
-
-                                -- Notify nearby players
-                                for _, p in ipairs(minetest.get_connected_players()) do
-                                    if vector.distance(p:get_pos(), pos_copy) < 32 then
-                                        minetest.chat_send_player(p:get_player_name(),
-                                            minetest.colorize("#FF00FF", "*** The EPIC chest releases its remaining treasures! ***"))
-                                    end
-                                end
-                            end
-
-                            -- Vanish effect
-                            minetest.sound_play("mcl_potions_brewing_finished", {
-                                pos = pos_copy, gain = 1.0, max_hear_distance = 24
-                            }, true)
-
-                            minetest.add_particlespawner({
-                                amount = 64,
-                                time = 0.5,
-                                minpos = vector.subtract(pos_copy, 0.5),
-                                maxpos = vector.add(pos_copy, 0.5),
-                                minvel = {x = -2, y = 2, z = -2},
-                                maxvel = {x = 2, y = 5, z = 2},
-                                minacc = {x = 0, y = -3, z = 0},
-                                maxacc = {x = 0, y = -3, z = 0},
-                                minexptime = 1,
-                                maxexptime = 2,
-                                minsize = 2,
-                                maxsize = 4,
-                                texture = "mcl_particles_crit.png^[colorize:#9932CC:200",
-                                glow = 14,
-                            })
-
-                            minetest.remove_node(pos_copy)
-                        end)
-                    else
-                        -- Show countdown hint
-                        local elapsed = os.time() - loot_started
-                        local remaining_time = math.max(0, 20 - elapsed)
-                        if remaining_time > 0 then
-                            minetest.chat_send_player(player_name,
-                                minetest.colorize("#FFAA00", "(" .. remaining_count .. " item(s) remaining - " .. remaining_time .. "s until auto-drop)"))
+                    if remaining_time > 0 then
+                        -- Color based on urgency
+                        local time_color = "#FFAA00"  -- Orange default
+                        if remaining_time <= 10 then
+                            time_color = "#FF4444"  -- Red when urgent
+                        elseif remaining_time <= 20 then
+                            time_color = "#FF8800"  -- Darker orange when getting close
                         end
+
+                        minetest.chat_send_player(player_name,
+                            minetest.colorize(time_color, "(" .. remaining_count .. " item(s) remaining - " .. remaining_time .. "s until chest vanishes)"))
                     end
                 else
-                    -- Non-epic chests: just notify about remaining items
+                    -- Fallback for chests that were placed before this feature
                     if remaining_count <= 3 then
                         minetest.chat_send_player(player_name,
-                            minetest.colorize("#FFAA00", "(" .. remaining_count .. " item(s) remaining in chest - is your inventory full?)"))
+                            minetest.colorize("#FFAA00", "(" .. remaining_count .. " item(s) remaining in chest)"))
                     end
                 end
             end
 
             if inv:is_empty("main") then
                 -- Chest is empty - make it vanish with effect
-                minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
-                    " emptied by " .. player_name .. " - removing")
+                minetest.log("action", "[quest_helper] " .. tier .. " chest at " .. minetest.pos_to_string(pos) ..
+                    " is EMPTY - attempting to remove for " .. player_name)
 
                 -- Play a magical vanish sound
                 minetest.sound_play("mcl_potions_brewing_finished", {
@@ -1536,10 +1496,14 @@ local function register_puzzle_chest(tier, config)
 
                 -- Remove the chest
                 minetest.remove_node(pos)
+                minetest.log("action", "[quest_helper] " .. tier .. " chest REMOVED at " .. minetest.pos_to_string(pos))
 
                 -- Notify the player
                 minetest.chat_send_player(player_name,
                     minetest.colorize(config.particle_color, "*** The " .. tier .. " puzzle chest vanishes in a puff of sparkles! ***"))
+            else
+                minetest.log("action", "[quest_helper] " .. tier .. " chest at " .. minetest.pos_to_string(pos) ..
+                    " NOT empty - skipping removal")
             end
         end,
     })
@@ -1659,6 +1623,104 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
             end
 
             minetest.sound_play("mcl_chests_enderchest_open", {pos = pos, gain = 0.5, max_hear_distance = 16}, true)
+
+            -- Start solved chest timeout timer
+            -- If player doesn't collect all items, chest will vanish and drop remaining items
+            local tier = meta:get_string("tier")
+            local timeout = SOLVED_CHEST_TIMEOUT[tier] or SOLVED_CHEST_TIMEOUT["medium"]
+            local pos_copy = vector.copy(pos)
+            local node_name = "quest_helper:puzzle_chest_" .. tier
+
+            -- Store solve time for countdown display
+            meta:set_int("solve_time", os.time())
+            meta:set_int("solve_timeout", timeout)
+
+            -- Notify player about the timeout
+            minetest.chat_send_player(player_name,
+                minetest.colorize("#FFAA00", "*** Collect items within " .. timeout .. " seconds before the chest vanishes! ***"))
+
+            minetest.after(timeout, function()
+                -- Check if chest still exists at this position
+                local node = minetest.get_node(pos_copy)
+                if node.name ~= node_name then
+                    return  -- Chest already gone (collected or removed)
+                end
+
+                local chest_meta = minetest.get_meta(pos_copy)
+                local chest_inv = chest_meta:get_inventory()
+
+                -- Check if chest is already empty
+                if chest_inv:is_empty("main") then
+                    -- Just remove the empty chest silently
+                    minetest.remove_node(pos_copy)
+                    return
+                end
+
+                -- Drop all remaining items
+                local dropped_count = 0
+                for i = 1, chest_inv:get_size("main") do
+                    local item_stack = chest_inv:get_stack("main", i)
+                    if not item_stack:is_empty() then
+                        -- Drop item above chest position with slight random offset
+                        local drop_pos = vector.add(pos_copy, {
+                            x = math.random() - 0.5,
+                            y = 0.5,
+                            z = math.random() - 0.5
+                        })
+                        minetest.add_item(drop_pos, item_stack)
+                        dropped_count = dropped_count + 1
+                    end
+                end
+
+                minetest.log("action", "[quest_helper] " .. tier .. " chest at " ..
+                    minetest.pos_to_string(pos_copy) .. " timed out - dropped " .. dropped_count .. " items")
+
+                -- Notify nearby players
+                local solved_by = chest_meta:get_string("solved_by") or "Unknown"
+                for _, p in ipairs(minetest.get_connected_players()) do
+                    if vector.distance(p:get_pos(), pos_copy) < 32 then
+                        if dropped_count > 0 then
+                            minetest.chat_send_player(p:get_player_name(),
+                                minetest.colorize("#FF6600", "*** The " .. tier .. " puzzle chest timed out and dropped its remaining treasures! ***"))
+                        else
+                            minetest.chat_send_player(p:get_player_name(),
+                                minetest.colorize("#AAAAAA", "*** The " .. tier .. " puzzle chest vanishes... ***"))
+                        end
+                    end
+                end
+
+                -- Vanish effect with tier-appropriate color
+                local tier_colors = {
+                    small = "#CD7F32",   -- Bronze
+                    medium = "#FFD700", -- Gold
+                    big = "#1E90FF",    -- Dodger Blue
+                    epic = "#9932CC",   -- Purple
+                }
+                local particle_color = tier_colors[tier] or "#FFD700"
+
+                minetest.sound_play("mcl_potions_brewing_finished", {
+                    pos = pos_copy, gain = 0.8, max_hear_distance = 24
+                }, true)
+
+                minetest.add_particlespawner({
+                    amount = 48,
+                    time = 0.5,
+                    minpos = vector.subtract(pos_copy, 0.5),
+                    maxpos = vector.add(pos_copy, 0.5),
+                    minvel = {x = -1.5, y = 1.5, z = -1.5},
+                    maxvel = {x = 1.5, y = 4, z = 1.5},
+                    minacc = {x = 0, y = -2, z = 0},
+                    maxacc = {x = 0, y = -2, z = 0},
+                    minexptime = 0.8,
+                    maxexptime = 1.5,
+                    minsize = 1.5,
+                    maxsize = 3,
+                    texture = "mcl_particles_crit.png^[colorize:" .. particle_color .. ":200",
+                    glow = 10,
+                })
+
+                minetest.remove_node(pos_copy)
+            end)
 
             -- Close formspec and let them right-click again to access
             minetest.close_formspec(player_name, "quest_helper:puzzle_chest")
