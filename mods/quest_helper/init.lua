@@ -1951,8 +1951,49 @@ local question_pool = {
     expert = {},
 }
 
--- Track used question IDs per session (to avoid duplicates)
-local used_questions = {}
+-- Track used question IDs persistently (survives restarts)
+-- Load from mod storage
+local function get_used_questions()
+    local json = storage:get_string("used_questions")
+    if json == "" then
+        return {}
+    end
+    return minetest.parse_json(json) or {}
+end
+
+-- Save to mod storage
+local function save_used_questions(used)
+    storage:set_string("used_questions", minetest.write_json(used))
+end
+
+-- Mark a question as used
+local function mark_question_used(question_id)
+    local used = get_used_questions()
+    used[question_id] = true
+    save_used_questions(used)
+end
+
+-- Check if a question is used
+local function is_question_used(question_id)
+    local used = get_used_questions()
+    return used[question_id] == true
+end
+
+-- Clear all used questions
+local function clear_used_questions()
+    storage:set_string("used_questions", "")
+    minetest.log("action", "[quest_helper] Used questions cleared")
+end
+
+-- Get count of used questions
+local function get_used_questions_count()
+    local used = get_used_questions()
+    local count = 0
+    for _ in pairs(used) do
+        count = count + 1
+    end
+    return count
+end
 
 -- Track players in placement mode
 local placement_mode = {}
@@ -2025,13 +2066,13 @@ local function get_random_question(difficulty, category)
         return nil
     end
 
-    -- Filter by category if specified
+    -- Filter by category if specified, exclude used questions
     local filtered = {}
     if category and category ~= "any" and category ~= "" then
         for _, q in ipairs(pool) do
             if q.category == category then
-                -- Check if not already used
-                if not used_questions[q.id] then
+                -- Check if not already used (persistent check)
+                if not is_question_used(q.id) then
                     table.insert(filtered, q)
                 end
             end
@@ -2039,7 +2080,7 @@ local function get_random_question(difficulty, category)
     else
         -- No category filter, just exclude used questions
         for _, q in ipairs(pool) do
-            if not used_questions[q.id] then
+            if not is_question_used(q.id) then
                 table.insert(filtered, q)
             end
         end
@@ -2047,8 +2088,8 @@ local function get_random_question(difficulty, category)
 
     -- If all questions used, reset and try again
     if #filtered == 0 then
-        minetest.log("action", "[quest_helper] All questions used, resetting pool")
-        used_questions = {}
+        minetest.log("action", "[quest_helper] All questions used for " .. difficulty .. "/" .. (category or "any") .. ", resetting pool")
+        clear_used_questions()
         -- Retry without used filter
         if category and category ~= "any" and category ~= "" then
             for _, q in ipairs(pool) do
@@ -2069,8 +2110,8 @@ local function get_random_question(difficulty, category)
     local idx = math.random(1, #filtered)
     local q = filtered[idx]
 
-    -- Mark as used
-    used_questions[q.id] = true
+    -- Mark as used (persistent)
+    mark_question_used(q.id)
 
     return {
         question = q.q,
@@ -2193,7 +2234,21 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
     if fields.toggle then
         mode.enabled = not mode.enabled
 
-        local tier_text = mode.tier == "random" and "random tier" or mode.tier
+        -- Safety: ensure tier is a valid string (not an index)
+        local tier_display = mode.tier
+        if tier_display and tonumber(tier_display) then
+            -- It's still an index number, convert it
+            local idx = tonumber(tier_display)
+            if idx and TIER_VALUES[idx] then
+                mode.tier = TIER_VALUES[idx]
+                tier_display = mode.tier
+            else
+                tier_display = "random"
+                mode.tier = "random"
+            end
+        end
+
+        local tier_text = tier_display == "random" and "random tier" or tier_display
         if mode.enabled then
             minetest.chat_send_player(player_name, minetest.colorize("#00FF00",
                 "*** Chest placement mode ENABLED! Punch blocks to place " .. tier_text .. " chests ***"))
@@ -2394,7 +2449,6 @@ minetest.register_chatcommand("questionstats", {
     func = function(name, param)
         local stats = {}
         local total = 0
-        local used_count = 0
 
         for difficulty, pool in pairs(question_pool) do
             local count = #pool
@@ -2402,9 +2456,7 @@ minetest.register_chatcommand("questionstats", {
             stats[difficulty] = count
         end
 
-        for _ in pairs(used_questions) do
-            used_count = used_count + 1
-        end
+        local used_count = get_used_questions_count()
 
         local lines = {"=== QUESTION POOL STATS ==="}
         table.insert(lines, "Easy: " .. (stats.easy or 0) .. " questions")
@@ -2412,9 +2464,446 @@ minetest.register_chatcommand("questionstats", {
         table.insert(lines, "Hard: " .. (stats.hard or 0) .. " questions")
         table.insert(lines, "Expert: " .. (stats.expert or 0) .. " questions")
         table.insert(lines, "Total: " .. total .. " questions")
-        table.insert(lines, "Used this session: " .. used_count)
+        table.insert(lines, "Used (persistent): " .. used_count .. "/" .. total)
+        table.insert(lines, "Remaining: " .. (total - used_count))
 
         return true, table.concat(lines, "\n")
+    end,
+})
+
+-- /resetquestions - Clear used questions to make all available again
+minetest.register_chatcommand("resetquestions", {
+    params = "",
+    description = "Reset used questions - makes all questions available again",
+    privs = {server = true},
+    func = function(name, param)
+        local old_count = get_used_questions_count()
+        clear_used_questions()
+        minetest.log("action", "[quest_helper] " .. name .. " reset " .. old_count .. " used questions")
+        return true, "Cleared " .. old_count .. " used questions. All questions are now available again."
+    end,
+})
+
+-- ============================================
+-- SCATTER COMMAND
+-- Automatically distribute puzzle chests in an area
+-- ============================================
+
+-- Configuration
+local SCATTER_MIN_SPACING = 8       -- Minimum blocks between chests
+local SCATTER_MIN_HEIGHT = 0        -- Minimum Y level (avoid deep underground)
+local SCATTER_MAX_COUNT = 100       -- Maximum chests per scatter
+local SCATTER_CONCEALMENT_THRESHOLD = 3  -- Minimum score to place
+local SCATTER_MAX_RETRIES = 10      -- Retries per chest for finding good spot
+
+-- Calculate concealment score for a position
+-- Higher score = better hiding spot
+local function calculate_concealment_score(pos)
+    local score = 0
+    local x, y, z = pos.x, pos.y, pos.z
+
+    -- Check for overhead cover (leaves, blocks above within 8 blocks)
+    local has_leaves = false
+    local has_cover = false
+    for check_y = y + 1, y + 8 do
+        local node = minetest.get_node({x = x, y = check_y, z = z})
+        local name = node.name
+        if name ~= "air" and name ~= "ignore" then
+            has_cover = true
+            if name:find("leaves") or name:find("leaf") then
+                has_leaves = true
+                break
+            end
+        end
+    end
+
+    if has_leaves then
+        score = score + 3  -- Under tree canopy
+    elseif has_cover then
+        score = score + 1  -- Some overhead cover
+    end
+
+    -- Check for nearby walls (solid blocks at chest level in 4 directions)
+    local wall_count = 0
+    local directions = {
+        {x = 1, z = 0}, {x = -1, z = 0},
+        {x = 0, z = 1}, {x = 0, z = -1},
+    }
+
+    for _, dir in ipairs(directions) do
+        local check_pos = {x = x + dir.x, y = y, z = z + dir.z}
+        local node = minetest.get_node(check_pos)
+        local name = node.name
+        -- Check if it's a solid block (not air, not plants, not water)
+        if name ~= "air" and name ~= "ignore" and
+           not name:find("water") and not name:find("lava") and
+           not name:find("flower") and not name:find("tallgrass") and
+           not name:find("fern") and not name:find("bush") then
+            -- Check if it's actually a wall (block above is also solid or this is tall)
+            local above = minetest.get_node({x = check_pos.x, y = check_pos.y + 1, z = check_pos.z})
+            if above.name ~= "air" or name:find("stone") or name:find("dirt") or name:find("sand") then
+                wall_count = wall_count + 1
+            end
+        end
+    end
+
+    score = score + (wall_count * 2)  -- +2 per wall
+
+    -- Bonus for corner (2+ walls)
+    if wall_count >= 2 then
+        score = score + 2
+    end
+
+    -- Check for depression (chest is lower than neighbors)
+    local lower_count = 0
+    for _, dir in ipairs(directions) do
+        local neighbor_y = find_ground_level(x + dir.x * 2, z + dir.z * 2)
+        if neighbor_y > y then
+            lower_count = lower_count + 1
+        end
+    end
+    if lower_count >= 2 then
+        score = score + 2  -- In a depression
+    end
+
+    -- Penalty for completely open flat area
+    if wall_count == 0 and not has_cover and lower_count == 0 then
+        score = score - 5
+    end
+
+    return score
+end
+
+-- Check if position is valid for chest placement
+local function is_valid_scatter_position(pos)
+    local x, y, z = pos.x, pos.y, pos.z
+
+    -- Check minimum height
+    if y < SCATTER_MIN_HEIGHT then
+        return false, "too deep"
+    end
+
+    -- Check the block at position (should be air or replaceable)
+    local node = minetest.get_node(pos)
+    if node.name ~= "air" then
+        local def = minetest.registered_nodes[node.name]
+        if not def or not def.buildable_to then
+            return false, "blocked"
+        end
+    end
+
+    -- Check block below (should be solid ground)
+    local below = minetest.get_node({x = x, y = y - 1, z = z})
+    local below_name = below.name
+    if below_name == "air" or below_name == "ignore" then
+        return false, "no ground"
+    end
+
+    -- Skip water and lava
+    if below_name:find("water") or below_name:find("lava") then
+        return false, "water/lava"
+    end
+
+    return true
+end
+
+-- Check minimum spacing from existing placed chests
+local function check_spacing(pos, placed_positions)
+    for _, placed_pos in ipairs(placed_positions) do
+        local dist = vector.distance(pos, placed_pos)
+        if dist < SCATTER_MIN_SPACING then
+            return false
+        end
+    end
+    return true
+end
+
+-- Helper to place a single chest at position (reuses chestmode logic)
+local function place_scatter_chest(pos, mode, player_name)
+    -- Resolve random selections
+    local actual_difficulty = mode.difficulty
+    if actual_difficulty == "random" then
+        actual_difficulty = ACTUAL_DIFFICULTIES[math.random(1, #ACTUAL_DIFFICULTIES)]
+    end
+
+    local actual_tier = mode.tier
+    if actual_tier == "random" then
+        actual_tier = ACTUAL_TIERS[math.random(1, #ACTUAL_TIERS)]
+    end
+
+    -- Get a random question
+    local q = get_random_question(actual_difficulty, mode.category)
+    if not q then
+        return false, "no questions"
+    end
+
+    -- Place the chest
+    local tier = actual_tier
+    local node_name = "quest_helper:puzzle_chest_" .. tier
+    local tier_config = PUZZLE_CHEST_TIERS[tier]
+
+    minetest.set_node(pos, {name = node_name})
+
+    -- Set up metadata
+    local meta = minetest.get_meta(pos)
+    local inv = meta:get_inventory()
+    inv:set_size("main", 27)
+
+    meta:set_string("question", q.question)
+    meta:set_string("answer", q.answer)
+    meta:set_int("max_attempts", 3)
+    meta:set_string("tier", tier)
+    meta:set_string("infotext", tier_config.infotext)
+
+    -- Add loot based on tier
+    local loot = {}
+    if tier == "small" then
+        loot = {
+            {get_item("iron"), math.random(3, 8)},
+            {get_item("bread"), math.random(4, 10)},
+            {get_item("torch"), math.random(8, 16)},
+        }
+    elseif tier == "medium" then
+        loot = {
+            {get_item("iron"), math.random(8, 16)},
+            {get_item("gold"), math.random(4, 8)},
+            {get_item("diamond"), math.random(1, 3)},
+            {get_item("bread"), math.random(8, 16)},
+            {get_item("iron_sword"), 1},
+        }
+    elseif tier == "big" then
+        loot = {
+            {get_item("gold"), math.random(16, 32)},
+            {get_item("diamond"), math.random(4, 8)},
+            {get_item("emerald"), math.random(2, 5)},
+            {get_item("diamond_sword"), 1},
+            {get_item("diamond_pick"), 1},
+        }
+    elseif tier == "epic" then
+        loot = {
+            {get_item("diamondblock"), math.random(2, 5)},
+            {get_item("emerald"), math.random(8, 16)},
+            {get_item("diamond_sword"), 1},
+            {get_item("diamond_pick"), 1},
+            {get_item("helmet_diamond"), 1},
+            {get_item("chestplate_diamond"), 1},
+            {get_item("leggings_diamond"), 1},
+            {get_item("boots_diamond"), 1},
+        }
+    end
+
+    for _, item in ipairs(loot) do
+        if item[1] and item[2] then
+            inv:add_item("main", item[1] .. " " .. item[2])
+        end
+    end
+
+    return true, tier
+end
+
+-- Try to find ground level quickly, returns nil if chunk not loaded
+local function find_ground_level_fast(x, z)
+    -- Quick check if area is loaded
+    local test_node = minetest.get_node({x = x, y = 64, z = z})
+    if test_node.name == "ignore" then
+        return nil  -- Chunk not loaded
+    end
+
+    -- Scan from y=100 down
+    for y = 100, -20, -1 do
+        local node = minetest.get_node({x = x, y = y, z = z})
+        local name = node.name
+
+        if name == "ignore" then
+            return nil  -- Hit unloaded area
+        end
+
+        -- Skip non-solid blocks
+        if name ~= "air" and
+           not name:find("water") and not name:find("lava") and
+           not name:find("tallgrass") and not name:find("flower") and
+           not name:find("fern") and not name:find("bush") and
+           not name:find("snow") and not name:find("leaves") then
+            return y  -- Found solid ground
+        end
+    end
+
+    return nil  -- No ground found
+end
+
+-- /scatter command - Distribute chests randomly in an area
+minetest.register_chatcommand("scatter", {
+    params = "<radius> <count>",
+    description = "Scatter puzzle chests randomly in a radius (max 200). Uses current /chestmode settings. Example: /scatter 50 20",
+    privs = {server = true},
+    func = function(name, param)
+        local player = minetest.get_player_by_name(name)
+        if not player then
+            return false, "Player not found"
+        end
+
+        -- Parse parameters
+        local radius, count = param:match("^(%d+)%s+(%d+)$")
+        radius = tonumber(radius)
+        count = tonumber(count)
+
+        if not radius or not count then
+            return false, "Usage: /scatter <radius> <count>  Example: /scatter 50 20"
+        end
+
+        if radius < 10 then
+            return false, "Radius must be at least 10 blocks"
+        end
+
+        if radius > 200 then
+            return false, "Radius cannot exceed 200 blocks (chunks may not be loaded)"
+        end
+
+        if count < 1 then
+            return false, "Count must be at least 1"
+        end
+
+        if count > SCATTER_MAX_COUNT then
+            return false, "Count cannot exceed " .. SCATTER_MAX_COUNT
+        end
+
+        -- Get placement mode settings, with proper defaults
+        -- Don't rely on placement_mode which may have index values
+        local mode = {
+            tier = "random",
+            difficulty = "random",
+            category = "any",
+        }
+
+        -- Copy valid string values from placement_mode if they exist
+        local pm = placement_mode[name]
+        if pm then
+            -- Validate tier is a valid string, not an index
+            if pm.tier and (pm.tier == "random" or pm.tier == "small" or pm.tier == "medium" or pm.tier == "big" or pm.tier == "epic") then
+                mode.tier = pm.tier
+            end
+            -- Validate difficulty
+            if pm.difficulty and (pm.difficulty == "random" or pm.difficulty == "easy" or pm.difficulty == "medium" or pm.difficulty == "hard" or pm.difficulty == "expert") then
+                mode.difficulty = pm.difficulty
+            end
+            -- Validate category
+            if pm.category and (pm.category == "any" or pm.category == "math" or pm.category == "science" or pm.category == "geography" or pm.category == "nature" or pm.category == "history" or pm.category == "general") then
+                mode.category = pm.category
+            end
+        end
+
+        -- Get center position (player position)
+        local center = vector.round(player:get_pos())
+
+        -- Start scatter process
+        minetest.chat_send_player(name, minetest.colorize("#FFD700",
+            "Starting scatter: " .. count .. " chests within " .. radius .. " blocks..."))
+        minetest.chat_send_player(name, minetest.colorize("#AAAAAA",
+            "Settings: tier=" .. mode.tier .. ", difficulty=" .. mode.difficulty .. ", category=" .. mode.category))
+
+        local placed_positions = {}
+        local placed_count = 0
+        local failed_count = 0
+        local exposed_count = 0
+        local current_chest = 0
+        local total_retries = 0
+        local max_total_retries = count * 50  -- Safety limit
+
+        -- Process chests one at a time with delays
+        local function process_next_chest()
+            current_chest = current_chest + 1
+            total_retries = total_retries + 1
+
+            -- Safety check to prevent infinite loops
+            if total_retries > max_total_retries then
+                minetest.chat_send_player(name, minetest.colorize("#FF6666",
+                    "Scatter aborted: too many retries. Placed " .. placed_count .. "/" .. count))
+                return
+            end
+
+            if current_chest > count then
+                -- Done! Send summary
+                local msg = "Scatter complete: " .. placed_count .. "/" .. count .. " chests placed"
+                if failed_count > 0 then
+                    msg = msg .. " (" .. failed_count .. " failed)"
+                end
+                if exposed_count > 0 then
+                    msg = msg .. " (" .. exposed_count .. " exposed)"
+                end
+                minetest.chat_send_player(name, minetest.colorize("#00FF00", msg))
+                minetest.log("action", "[quest_helper] " .. name .. " scattered " .. placed_count .. " chests, radius=" .. radius)
+                return
+            end
+
+            -- Progress update every 5 chests
+            if (current_chest - 1) % 5 == 0 then
+                minetest.chat_send_player(name, minetest.colorize("#AAAAAA",
+                    "Placing chests... " .. placed_count .. "/" .. count))
+            end
+
+            -- Try to find a good position
+            local best_pos = nil
+            local best_score = -999
+            local retry_this_chest = 0
+
+            for retry = 1, SCATTER_MAX_RETRIES do
+                retry_this_chest = retry
+
+                -- Generate random position in circle
+                local angle = math.random() * 2 * math.pi
+                local dist = math.sqrt(math.random()) * radius
+                local try_x = center.x + math.floor(dist * math.cos(angle))
+                local try_z = center.z + math.floor(dist * math.sin(angle))
+
+                -- Find ground level (fast version that returns nil if not loaded)
+                local ground_y = find_ground_level_fast(try_x, try_z)
+
+                if ground_y then
+                    local try_pos = {x = try_x, y = ground_y + 1, z = try_z}
+
+                    -- Check validity
+                    local valid, reason = is_valid_scatter_position(try_pos)
+                    if valid and check_spacing(try_pos, placed_positions) then
+                        local score = calculate_concealment_score(try_pos)
+
+                        if score > best_score then
+                            best_score = score
+                            best_pos = try_pos
+                        end
+
+                        -- If score meets threshold, use it immediately
+                        if score >= SCATTER_CONCEALMENT_THRESHOLD then
+                            break
+                        end
+                    end
+                end
+            end
+
+            -- Place chest at best position found
+            if best_pos then
+                local success, result = place_scatter_chest(best_pos, mode, name)
+                if success then
+                    table.insert(placed_positions, best_pos)
+                    placed_count = placed_count + 1
+
+                    if best_score < SCATTER_CONCEALMENT_THRESHOLD then
+                        exposed_count = exposed_count + 1
+                    end
+                else
+                    failed_count = failed_count + 1
+                end
+            else
+                failed_count = failed_count + 1
+            end
+
+            -- Process next chest after a short delay
+            minetest.after(0.05, process_next_chest)
+        end
+
+        -- Start processing
+        minetest.after(0.1, process_next_chest)
+
+        return true, "Scatter started..."
     end,
 })
 
@@ -2425,4 +2914,4 @@ minetest.register_on_leaveplayer(function(player)
 end)
 
 -- Print loaded message
-minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon, /vanish, /leaderboard, /myscore, /hud, /resetscores, /chestmode, /reloadquestions, /questionstats")
+minetest.log("action", "[quest_helper] Quest Helper mod loaded! Commands: /starterkit, /herokit, /questkit, /treasure, /puzzlechest, /savespot, /gospot, /bringall, /announce, /countdown, /placetext, /bigtext, /placemarker, /trail, /pole, /beacon, /vanish, /leaderboard, /myscore, /hud, /resetscores, /chestmode, /reloadquestions, /questionstats, /resetquestions, /scatter")
