@@ -1332,10 +1332,32 @@ local function register_puzzle_chest(tier, config)
                 return
             end
 
-            -- Check if already unlocked by this player
+            -- Check if chest was already solved globally
+            local solved_by = meta:get_string("solved_by")
             local unlocked_key = "unlocked_" .. player_name
-            if meta:get_int(unlocked_key) == 1 then
-                -- Already unlocked, show chest inventory
+            local player_unlocked = meta:get_int(unlocked_key) == 1
+
+            if meta:get_int("solved") == 1 then
+                if solved_by == player_name or player_unlocked then
+                    -- This player solved it - show inventory so they can take items
+                    local inv_formspec = "formspec_version[4]" ..
+                                        "size[9,8.75]" ..
+                                        "label[0.5,0.5;" .. config.description .. " (Unlocked)]" ..
+                                        "list[nodemeta:" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ";main;0.5,1;9,3;]" ..
+                                        "list[current_player;main;0.5,4.75;9,3;9]" ..
+                                        "list[current_player;main;0.5,7.75;9,1;]" ..
+                                        "listring[]"
+                    minetest.show_formspec(player_name, "quest_helper:puzzle_chest_unlocked", inv_formspec)
+                else
+                    -- Another player already solved this chest
+                    minetest.chat_send_player(player_name,
+                        minetest.colorize("#FFAA00", "*** This puzzle chest was already solved by " .. solved_by .. "! ***"))
+                end
+                return
+            end
+
+            -- Legacy: check if player had unlocked before the global solved flag existed
+            if player_unlocked then
                 local inv_formspec = "formspec_version[4]" ..
                                     "size[9,8.75]" ..
                                     "label[0.5,0.5;" .. config.description .. " (Unlocked)]" ..
@@ -1481,7 +1503,9 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 
         -- Check answer (case insensitive, space tolerant, multi-answer support)
         if check_answer(player_answer, correct_answer) then
-            -- Correct! Unlock for this player
+            -- Correct! Mark chest as globally solved (prevents other players from re-solving)
+            meta:set_int("solved", 1)
+            meta:set_string("solved_by", player_name)
             meta:set_int("unlocked_" .. player_name, 1)
             puzzle_attempts[attempt_key] = nil  -- Reset attempts
 
