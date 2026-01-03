@@ -1479,21 +1479,49 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
         local attempt_key = get_attempt_key(player_name, pos)
 
         -- Normalize answer: lowercase, trim spaces, collapse multiple spaces
+        -- Also handles German umlauts and common accents for kid-friendly input
         local function normalize(str)
-            return str:lower():gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+            str = str:lower()
+            -- German umlaut normalization (kids might not have German keyboard)
+            str = str:gsub("ä", "ae"):gsub("ö", "oe"):gsub("ü", "ue"):gsub("ß", "ss")
+            -- Handle uppercase umlauts too (before lowercase conversion might miss them)
+            str = str:gsub("Ä", "ae"):gsub("Ö", "oe"):gsub("Ü", "ue")
+            -- Common accent normalization
+            str = str:gsub("é", "e"):gsub("è", "e"):gsub("ê", "e"):gsub("ë", "e")
+            str = str:gsub("á", "a"):gsub("à", "a"):gsub("â", "a"):gsub("ã", "a")
+            str = str:gsub("í", "i"):gsub("ì", "i"):gsub("î", "i"):gsub("ï", "i")
+            str = str:gsub("ó", "o"):gsub("ò", "o"):gsub("ô", "o"):gsub("õ", "o")
+            str = str:gsub("ú", "u"):gsub("ù", "u"):gsub("û", "u")
+            str = str:gsub("ñ", "n"):gsub("ç", "c")
+            -- Trim and collapse spaces
+            str = str:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+            return str
+        end
+
+        -- Normalize for strict comparison (also removes hyphens and spaces)
+        local function normalize_strict(str)
+            str = normalize(str)
+            -- Remove hyphens and spaces for lenient matching
+            str = str:gsub("%-", ""):gsub("%s", "")
+            return str
         end
 
         -- Check if player answer matches any valid answer
         -- Supports multiple answers separated by | (e.g., "paris|paris france")
+        -- Handles German umlauts, accents, spaces, and hyphens
         local function check_answer(player_ans, correct_ans)
-            player_ans = normalize(player_ans)
+            local player_normalized = normalize(player_ans)
+            local player_strict = normalize_strict(player_ans)
+
             -- Check each valid answer (separated by |)
             for valid in correct_ans:gmatch("[^|]+") do
-                valid = normalize(valid)
-                -- Exact match
-                if player_ans == valid then return true end
-                -- Match without spaces (for multi-word answers like "bluewhale" vs "blue whale")
-                if player_ans:gsub("%s", "") == valid:gsub("%s", "") then return true end
+                local valid_normalized = normalize(valid)
+                local valid_strict = normalize_strict(valid)
+
+                -- Exact match after normalization
+                if player_normalized == valid_normalized then return true end
+                -- Strict match (ignoring spaces and hyphens)
+                if player_strict == valid_strict then return true end
             end
             return false
         end
