@@ -159,7 +159,7 @@ local function update_player_hud(player)
     else
         -- Create new HUD element
         player_hud_ids[player_name] = player:hud_add({
-            hud_elem_type = "text",
+            type = "text",
             position = {x = 1, y = 0},
             offset = {x = -10, y = 80},
             text = hud_text,
@@ -1402,6 +1402,110 @@ local function register_puzzle_chest(tier, config)
 
             -- Check if chest is now empty
             local inv = meta:get_inventory()
+
+            -- Count remaining items
+            local remaining_count = 0
+            local remaining_items = {}
+            for i = 1, inv:get_size("main") do
+                local item = inv:get_stack("main", i)
+                if not item:is_empty() then
+                    remaining_count = remaining_count + 1
+                    table.insert(remaining_items, {slot = i, stack = item})
+                end
+            end
+
+            if remaining_count > 0 then
+                minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
+                    " still has " .. remaining_count .. " items remaining")
+
+                -- EPIC CHEST SPECIAL: Drop remaining items after timeout
+                if tier == "epic" then
+                    local loot_started = meta:get_int("loot_started")
+                    if loot_started == 0 then
+                        -- First take - start the loot timer
+                        meta:set_int("loot_started", os.time())
+                        minetest.chat_send_player(player_name,
+                            minetest.colorize("#FF00FF", "*** EPIC CHEST: You have 20 seconds to collect items! ***"))
+
+                        -- Schedule auto-drop after 20 seconds
+                        local pos_copy = vector.copy(pos)
+                        minetest.after(20, function()
+                            -- Check if chest still exists
+                            local node = minetest.get_node(pos_copy)
+                            if node.name ~= "quest_helper:puzzle_chest_epic" then
+                                return  -- Chest already gone
+                            end
+
+                            local chest_meta = minetest.get_meta(pos_copy)
+                            local chest_inv = chest_meta:get_inventory()
+
+                            -- Drop all remaining items
+                            local dropped_count = 0
+                            for i = 1, chest_inv:get_size("main") do
+                                local item_stack = chest_inv:get_stack("main", i)
+                                if not item_stack:is_empty() then
+                                    -- Drop item above chest position
+                                    local drop_pos = vector.add(pos_copy, {x = math.random() - 0.5, y = 0.5, z = math.random() - 0.5})
+                                    minetest.add_item(drop_pos, item_stack)
+                                    dropped_count = dropped_count + 1
+                                end
+                            end
+
+                            if dropped_count > 0 then
+                                minetest.log("action", "[quest_helper] Epic chest at " .. minetest.pos_to_string(pos_copy) ..
+                                    " timed out - dropped " .. dropped_count .. " items")
+
+                                -- Notify nearby players
+                                for _, p in ipairs(minetest.get_connected_players()) do
+                                    if vector.distance(p:get_pos(), pos_copy) < 32 then
+                                        minetest.chat_send_player(p:get_player_name(),
+                                            minetest.colorize("#FF00FF", "*** The EPIC chest releases its remaining treasures! ***"))
+                                    end
+                                end
+                            end
+
+                            -- Vanish effect
+                            minetest.sound_play("mcl_potions_brewing_finished", {
+                                pos = pos_copy, gain = 1.0, max_hear_distance = 24
+                            }, true)
+
+                            minetest.add_particlespawner({
+                                amount = 64,
+                                time = 0.5,
+                                minpos = vector.subtract(pos_copy, 0.5),
+                                maxpos = vector.add(pos_copy, 0.5),
+                                minvel = {x = -2, y = 2, z = -2},
+                                maxvel = {x = 2, y = 5, z = 2},
+                                minacc = {x = 0, y = -3, z = 0},
+                                maxacc = {x = 0, y = -3, z = 0},
+                                minexptime = 1,
+                                maxexptime = 2,
+                                minsize = 2,
+                                maxsize = 4,
+                                texture = "mcl_particles_crit.png^[colorize:#9932CC:200",
+                                glow = 14,
+                            })
+
+                            minetest.remove_node(pos_copy)
+                        end)
+                    else
+                        -- Show countdown hint
+                        local elapsed = os.time() - loot_started
+                        local remaining_time = math.max(0, 20 - elapsed)
+                        if remaining_time > 0 then
+                            minetest.chat_send_player(player_name,
+                                minetest.colorize("#FFAA00", "(" .. remaining_count .. " item(s) remaining - " .. remaining_time .. "s until auto-drop)"))
+                        end
+                    end
+                else
+                    -- Non-epic chests: just notify about remaining items
+                    if remaining_count <= 3 then
+                        minetest.chat_send_player(player_name,
+                            minetest.colorize("#FFAA00", "(" .. remaining_count .. " item(s) remaining in chest - is your inventory full?)"))
+                    end
+                end
+            end
+
             if inv:is_empty("main") then
                 -- Chest is empty - make it vanish with effect
                 minetest.log("action", "[quest_helper] Puzzle chest at " .. minetest.pos_to_string(pos) ..
