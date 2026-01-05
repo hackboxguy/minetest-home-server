@@ -17,6 +17,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     curl-dev \
     openssl-dev \
     zlib-dev \
+    ncurses-dev \
     wget \
     unzip
 
@@ -44,10 +45,11 @@ RUN cmake . \
     -DENABLE_LEVELDB=FALSE \
     -DENABLE_SYSTEM_JSONCPP=FALSE \
     -DENABLE_SPATIAL=FALSE \
-    -DENABLE_CURL=FALSE \
+    -DENABLE_CURL=TRUE \
     -DENABLE_SOUND=FALSE \
     -DENABLE_LUAJIT=TRUE \
     -DENABLE_SYSTEM_GMP=TRUE \
+    -DENABLE_CURSES=TRUE \
     -DLUAJIT_INCLUDE_DIR=/usr/local/include/luajit-2.1 \
     -DLUAJIT_LIBRARY=/usr/local/lib/libluajit-5.1.so
 RUN make -j$(nproc)
@@ -95,6 +97,64 @@ RUN wget https://github.com/minetest-mods/3d_armor/archive/refs/heads/master.zip
     mv 3d_armor-master 3d_armor && \
     rm 3d_armor.zip
 
+# SkinsDB - skin selection/customization
+RUN set -e; \
+    (wget -O skinsdb.zip https://github.com/minetest-mods/skinsdb/archive/refs/heads/master.zip || \
+     wget -O skinsdb.zip https://github.com/minetest-mods/skinsdb/archive/refs/heads/main.zip); \
+    unzip skinsdb.zip; \
+    mv skinsdb-* skinsdb; \
+    rm skinsdb.zip
+
+# Awards - achievements for players
+RUN set -e; \
+    (wget -O awards.zip https://github.com/minetest-mods/awards/archive/refs/heads/master.zip || \
+     wget -O awards.zip https://github.com/minetest-mods/awards/archive/refs/heads/main.zip); \
+    unzip awards.zip; \
+    mv awards-* awards; \
+    rm awards.zip
+
+# Protector - area/plot protection (ContentDB source for stability)
+RUN set -e; \
+    wget -O protector.zip https://content.minetest.net/packages/TenPlus1/protector/download/; \
+    unzip protector.zip; \
+    if [ -d protector ]; then :; else mv protector-* protector; fi; \
+    rm protector.zip
+
+# WorldEdit - building/admin tools (use upstream repo)
+RUN set -e; \
+    (wget -O worldedit.zip https://github.com/Uberi/Minetest-WorldEdit/archive/refs/heads/master.zip || \
+     wget -O worldedit.zip https://github.com/Uberi/Minetest-WorldEdit/archive/refs/heads/main.zip); \
+    unzip worldedit.zip; \
+    mv Minetest-WorldEdit-* worldedit; \
+    rm worldedit.zip
+
+# Travelnet - simple portal network for bases/hubs (moved to mt-mods org)
+RUN set -e; \
+    wget -O travelnet.zip https://github.com/mt-mods/travelnet/archive/refs/heads/master.zip; \
+    unzip travelnet.zip; \
+    mv travelnet-* travelnet; \
+    rm travelnet.zip
+
+# Lootchests Modpack - randomized treasure chests (from ContentDB)
+RUN set -e; \
+    wget -O lootchests.zip https://content.luanti.org/packages/mt-mods/lootchest_modpack/download/; \
+    unzip lootchests.zip; \
+    if [ -d lootchest_modpack ]; then mv lootchest_modpack lootchests; elif [ ! -d lootchests ]; then mv lootchest* lootchests; fi; \
+    rm lootchests.zip
+
+# Ambience - ambient sounds for atmosphere (from ContentDB, maintained by TenPlus1)
+RUN set -e; \
+    wget -O ambience.zip https://content.luanti.org/packages/TenPlus1/ambience/download/; \
+    unzip ambience.zip; \
+    if [ -d ambience ]; then :; else mv ambience-* ambience 2>/dev/null || mv TenPlus1-ambience* ambience; fi; \
+    rm ambience.zip
+
+# mtui_mod - companion mod for mtui web admin interface
+# Renamed folder to 'mtui' to match mod.conf name for secure.http_mods compatibility
+RUN git clone https://github.com/minetest-go/mtui_mod --depth 1 && \
+    mv mtui_mod mtui && \
+    rm -rf mtui/.git
+
 # Download and install texture packs
 WORKDIR /luanti/luanti/textures
 
@@ -137,7 +197,8 @@ RUN apk update && \
     curl \
     openssl \
     zlib \
-    libgcc
+    libgcc \
+    ncurses
 
 # Copy custom LuaJIT from builder stage
 COPY --from=builder /usr/local/lib/libluajit-5.1.so* /usr/local/lib/
@@ -152,6 +213,11 @@ RUN mkdir -p /luanti/luanti/games && \
     mkdir -p /luanti/luanti/mods && \
     mkdir -p /luanti/luanti/textures && \
     mkdir -p /luanti/luanti/worlds/world
+
+# Copy custom mods
+COPY mods/no_register /luanti/luanti/mods/no_register
+COPY mods/admin_init /luanti/luanti/mods/admin_init
+COPY mods/quest_helper /luanti/luanti/mods/quest_helper
 
 # Expose ports
 EXPOSE 30000-30001

@@ -1,20 +1,19 @@
-# Luanti Server Docker Compose - For Developers (Build Locally)
-# Run: docker-compose -f docker-compose.build.yml up -d --build
+# Luanti Server Docker Compose - OFFLINE/LAN OPTIMIZED
+# Use this for home network gaming with performance optimizations
+# Run: docker-compose -f docker-compose.offline.yml up -d
 #
 # First-time deployment with admin setup:
-#   ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.build.yml up -d --build
+#   ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.offline.yml up -d
 #
-# Optional environment variables:
-#   ADMIN_USER=customadmin (defaults to "admin")
-#   MTUI_PORT_MINECLONIA=8000 (web admin for Mineclonia)
-#   MTUI_PORT_VOXELIBRE=8001 (web admin for VoxeLibre)
+# Start new world with specific seed:
+#   GAME_SEED=12345 ADMIN_PASSWORD=yourpassword docker-compose -f docker-compose.offline.yml up -d
+#
+# Note: Seed only applies to NEW worlds. To change seed on existing world,
+# delete the world folder first or manually edit worlds/*/world.mt
 
 services:
   mineclonia:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: luanti-home-server:latest
+    image: hackboxguy/luanti-home-server:latest
     container_name: luanti_mineclonia
     restart: unless-stopped
     stdin_open: true
@@ -23,17 +22,19 @@ services:
       - "30000:30000/udp"
     volumes:
       - ./worlds/mineclonia:/luanti/luanti/worlds/world
-      - ./config/mineclonia.conf:/luanti/luanti/config/luanti.conf
+      - ./config/mineclonia-offline.conf:/luanti/luanti/config/luanti.conf
+      # Mount only custom mods (keeps Docker image mods intact)
+      - ./mods/quest_helper:/luanti/luanti/mods/quest_helper
+      - ./mods/admin_init:/luanti/luanti/mods/admin_init
+      - ./mods/no_register:/luanti/luanti/mods/no_register
     environment:
       - GAME_TO_PLAY=mineclonia
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_USER=${ADMIN_USER:-admin}
+      - GAME_SEED=${GAME_SEED:-}
 
   voxelibre:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: luanti-home-server:latest
+    image: hackboxguy/luanti-home-server:latest
     container_name: luanti_voxelibre
     restart: unless-stopped
     stdin_open: true
@@ -42,11 +43,16 @@ services:
       - "30001:30000/udp"
     volumes:
       - ./worlds/voxelibre:/luanti/luanti/worlds/world
-      - ./config/voxelibre.conf:/luanti/luanti/config/luanti.conf
+      - ./config/voxelibre-offline.conf:/luanti/luanti/config/luanti.conf
+      # Mount only custom mods (keeps Docker image mods intact)
+      - ./mods/quest_helper:/luanti/luanti/mods/quest_helper
+      - ./mods/admin_init:/luanti/luanti/mods/admin_init
+      - ./mods/no_register:/luanti/luanti/mods/no_register
     environment:
       - GAME_TO_PLAY=voxelibre
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_USER=${ADMIN_USER:-admin}
+      - GAME_SEED=${GAME_SEED:-}
 
   # Web Admin for Mineclonia
   mtui-mineclonia:
@@ -59,14 +65,14 @@ services:
       - "${MTUI_PORT_MINECLONIA:-8000}:8080"
     volumes:
       - ./worlds/mineclonia:/world
-      - ./config/mineclonia.conf:/world/minetest.conf:ro
+      - ./config/mineclonia-offline.conf:/world/minetest.conf:ro
     environment:
       - WORLD_DIR=/world
       - MINETEST_CONFIG=/world/minetest.conf
       - API_KEY=luanti-mtui-secret-key-2025
       - ADMIN_USERNAME=${ADMIN_USER:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      - SERVER_NAME=Mineclonia Admin
+      - SERVER_NAME=Mineclonia Admin (LAN)
       - LOGLEVEL=info
       - COOKIE_DOMAIN=
       - COOKIE_SECURE=false
@@ -83,14 +89,14 @@ services:
       - "${MTUI_PORT_VOXELIBRE:-8001}:8080"
     volumes:
       - ./worlds/voxelibre:/world
-      - ./config/voxelibre.conf:/world/minetest.conf:ro
+      - ./config/voxelibre-offline.conf:/world/minetest.conf:ro
     environment:
       - WORLD_DIR=/world
       - MINETEST_CONFIG=/world/minetest.conf
       - API_KEY=luanti-mtui-secret-key-2025
       - ADMIN_USERNAME=${ADMIN_USER:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      - SERVER_NAME=VoxeLibre Admin
+      - SERVER_NAME=VoxeLibre Admin (LAN)
       - LOGLEVEL=info
       - COOKIE_DOMAIN=
       - COOKIE_SECURE=false
