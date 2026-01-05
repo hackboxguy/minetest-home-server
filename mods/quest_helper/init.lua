@@ -34,6 +34,19 @@ local SOLVED_CHEST_TIMEOUT = {
     epic = 20,    -- 20 seconds (epic already has tight timer)
 }
 
+-- CHEST COLOR MODE: Set to true for uniform pink chests (better visibility)
+-- Set to false to use tier-specific colors (brown/silver/gold/purple)
+local USE_UNIFORM_CHEST_COLOR = true
+
+-- Uniform color applied to all chests when USE_UNIFORM_CHEST_COLOR is true
+-- Hot pink/magenta is highly visible against most terrain
+local UNIFORM_CHEST_COLOR = {
+    base_texture = "default_gold_block.png^[colorize:#FF1493:200",   -- Hot pink
+    side_texture = "default_gold_block.png^[colorize:#FF69B4:180",   -- Light pink sides
+    front_texture = "default_gold_block.png^[colorize:#FF00FF:190",  -- Magenta front
+    particle_color = "#FF1493",
+}
+
 -- Track HUD elements per player
 local player_hud_ids = {}
 
@@ -1263,6 +1276,18 @@ local PUZZLE_CHEST_TIERS = {
         particle_color = "#9932CC",
     },
 }
+
+-- Apply uniform color to all tiers if enabled (for better visibility)
+if USE_UNIFORM_CHEST_COLOR then
+    for tier, config in pairs(PUZZLE_CHEST_TIERS) do
+        config.base_texture = UNIFORM_CHEST_COLOR.base_texture
+        config.side_texture = UNIFORM_CHEST_COLOR.side_texture
+        config.front_texture = UNIFORM_CHEST_COLOR.front_texture
+        config.particle_color = UNIFORM_CHEST_COLOR.particle_color
+        -- Keep original description and infotext so tier names remain visible
+    end
+    minetest.log("action", "[quest_helper] Using uniform PINK chest color for all tiers")
+end
 
 -- Helper to check if a node is any puzzle chest variant
 local function is_puzzle_chest(node_name)

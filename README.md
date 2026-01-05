@@ -221,14 +221,73 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 | `/puzzlechest <tier> <question> \| <answer>` | Place puzzle chest at your position |
 | `/puzzlechest <x> <y\|~> <z> <tier> <question> \| <answer>` | Place at coordinates |
 
+**Puzzle Chest Tiers:**
+| Tier | Appearance | Points | Timeout | Description |
+|------|------------|--------|---------|-------------|
+| `small` | Bronze/Iron | 10 | 45s | Easy puzzles, basic loot |
+| `medium` | Gold | 25 | 60s | Medium puzzles, good loot |
+| `big` | Blue | 50 | 90s | Hard puzzles, great loot |
+| `epic` | Purple | 100 | 20s | Expert puzzles, amazing loot |
+
 **Example:** `/puzzlechest medium What is 2+2? | four`
 
 **Features:**
 - Players must answer correctly to unlock the chest
-- Case-insensitive answers
+- Case-insensitive answers with German umlaut support (ä→ae, ö→oe, ü→ue)
+- Multiple valid answers supported (separated by `|` in answer)
 - 3 attempts before the chest **explodes** (damages player, loot lost forever!)
+- **Timeout system:** Once solved, players have limited time to collect items before chest vanishes
+- Remaining items drop on ground when timeout expires
 - Admins bypass the puzzle automatically
 - Each player must solve independently
+- Points awarded for solving (see Scoreboard below)
+
+### Scatter Command (Mass Chest Placement)
+| Command | Description |
+|---------|-------------|
+| `/scatter <radius> <count> [tier] [exposed]` | Scatter chests around your position |
+
+**Examples:**
+```bash
+/scatter 50 5              # 5 random-tier chests within 50 blocks
+/scatter 100 10 medium     # 10 medium chests within 100 blocks
+/scatter 75 8 big exposed  # 8 big chests, prefer surface locations
+```
+
+**Modes:**
+- Default: Prefers concealed locations (caves, overhangs)
+- `exposed`: Prefers visible surface locations
+
+### Chest Mode
+| Command | Description |
+|---------|-------------|
+| `/chestmode [exposed\|concealed]` | Set default placement preference |
+
+### Vanish Command
+| Command | Description |
+|---------|-------------|
+| `/vanish [radius]` | Remove all puzzle chests within radius (default: 100) |
+
+### Scoreboard & Leaderboard
+| Command | Description |
+|---------|-------------|
+| `/leaderboard` | Show top players and scores |
+| `/myscore` | Show your current score |
+| `/hud [on\|off]` | Toggle scoreboard HUD display |
+| `/resetscores` | Reset all player scores (admin only) |
+
+Points are awarded when players solve puzzle chests (see tier table above).
+
+### Random Questions from JSON
+The mod can load questions from `tools/questions.json` for random puzzle generation:
+
+| Command | Description |
+|---------|-------------|
+| `/reloadquestions` | Reload questions from JSON file |
+| `/questionstats` | Show question usage statistics |
+| `/resetquestions` | Reset question tracking (re-enable used questions) |
+
+**Question file format:** See `tools/questions.json` for examples with categories (easy, medium, hard, expert) and hints.
 
 ### Beacons & Poles
 | Command | Description |
@@ -245,6 +304,7 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 |---------|-------------|
 | `/placetext <text>` | Place sign with text at your position |
 | `/placetext <x> <y> <z> <text>` | Place sign at coordinates |
+| `/bigtext <text>` | Create large 3D floating text (visible from far away) |
 | `/placemarker <color>` | Place colored wool (red, blue, yellow, green, orange, purple, white) |
 | `/trail <color> <length> <n/s/e/w>` | Create trail of markers (e.g., `/trail red 10 n`) |
 
@@ -253,6 +313,7 @@ The **quest_helper** mod provides admin commands for creating treasure hunts and
 |---------|-------------|
 | `/savespot <name>` | Save current position as named waypoint |
 | `/gospot <name>` | Teleport to saved waypoint |
+| `/listspots` | List all saved waypoints |
 | `/bringall` | Teleport all players to your position |
 
 ### Announcements
