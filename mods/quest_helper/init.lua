@@ -47,6 +47,377 @@ local UNIFORM_CHEST_COLOR = {
     particle_color = "#FF1493",
 }
 
+-- THEMED LOOT KITS: Each tier has multiple kit themes for variety
+-- When a player solves a puzzle chest, one kit is randomly selected
+-- Format: {item_name, min_count, max_count} - count is randomized between min and max
+local THEMED_LOOT_KITS = {
+    -- SMALL TIER: Basic kits for beginners
+    small = {
+        miner = {
+            name = "Miner's Kit",
+            items = {
+                {"stone_pick", 1, 1},
+                {"torch", 16, 32},
+                {"coal", 8, 16},
+                {"iron", 3, 6},
+                {"bread", 4, 8},
+            }
+        },
+        survivor = {
+            name = "Survivor's Kit",
+            items = {
+                {"bread", 8, 16},
+                {"cooked_beef", 4, 8},
+                {"apple", 4, 8},
+                {"torch", 8, 16},
+                {"leather_boots", 1, 1},
+            }
+        },
+        fighter = {
+            name = "Fighter's Kit",
+            items = {
+                {"stone_sword", 1, 1},
+                {"bow", 1, 1},
+                {"arrow", 16, 32},
+                {"bread", 4, 8},
+                {"helmet_leather", 1, 1},
+            }
+        },
+        explorer = {
+            name = "Explorer's Kit",
+            items = {
+                {"compass", 1, 1},
+                {"map", 1, 2},
+                {"torch", 24, 48},
+                {"bread", 6, 12},
+                {"ladder", 8, 16},
+            }
+        },
+    },
+
+    -- MEDIUM TIER: Better equipment and more resources
+    medium = {
+        combat = {
+            name = "Combat Kit",
+            items = {
+                {"iron_sword", 1, 1},
+                {"shield", 1, 1},
+                {"bow", 1, 1},
+                {"arrow", 32, 64},
+                {"helmet_iron", 1, 1},
+                {"cooked_beef", 8, 12},
+            }
+        },
+        mining = {
+            name = "Mining Kit",
+            items = {
+                {"iron_pick", 1, 1},
+                {"iron_shovel", 1, 1},
+                {"torch", 48, 64},
+                {"iron", 8, 16},
+                {"gold", 4, 8},
+                {"diamond", 1, 2},
+            }
+        },
+        builder = {
+            name = "Builder's Kit",
+            items = {
+                {"cobble", 64, 64},
+                {"glass", 32, 48},
+                {"ladder", 24, 32},
+                {"fence", 16, 24},
+                {"torch", 32, 48},
+                {"iron_axe", 1, 1},
+            }
+        },
+        farmer = {
+            name = "Farmer's Kit",
+            items = {
+                {"hoe_iron", 1, 1},
+                {"seeds_wheat", 16, 32},
+                {"seeds_melon", 4, 8},
+                {"seeds_pumpkin", 4, 8},
+                {"bone_meal", 16, 32},
+                {"water_bucket", 1, 1},
+                {"bread", 16, 24},
+            }
+        },
+        adventurer = {
+            name = "Adventurer's Kit",
+            items = {
+                {"compass", 1, 1},
+                {"spyglass", 1, 1},
+                {"iron_sword", 1, 1},
+                {"torch", 32, 48},
+                {"golden_apple", 1, 2},
+                {"boots_iron", 1, 1},
+            }
+        },
+    },
+
+    -- BIG TIER: High-quality gear and valuable resources
+    big = {
+        warrior = {
+            name = "Warrior's Arsenal",
+            items = {
+                {"diamond_sword", 1, 1},
+                {"shield", 1, 1},
+                {"crossbow", 1, 1},
+                {"arrow", 64, 64},
+                {"chestplate_iron", 1, 1},
+                {"leggings_iron", 1, 1},
+                {"golden_apple", 2, 4},
+            }
+        },
+        master_miner = {
+            name = "Master Miner's Haul",
+            items = {
+                {"diamond_pick", 1, 1},
+                {"diamond_shovel", 1, 1},
+                {"diamond", 8, 16},
+                {"gold", 16, 24},
+                {"emerald", 4, 8},
+                {"torch", 64, 64},
+            }
+        },
+        treasure = {
+            name = "Treasure Trove",
+            items = {
+                {"diamond", 6, 12},
+                {"emerald", 6, 10},
+                {"gold", 24, 32},
+                {"goldblock", 2, 4},
+                {"lapis", 16, 32},
+                {"golden_apple", 2, 3},
+            }
+        },
+        knight = {
+            name = "Knight's Armor Set",
+            items = {
+                {"helmet_iron", 1, 1},
+                {"chestplate_iron", 1, 1},
+                {"leggings_iron", 1, 1},
+                {"boots_iron", 1, 1},
+                {"iron_sword", 1, 1},
+                {"shield", 1, 1},
+                {"diamond", 4, 6},
+                {"cooked_beef", 16, 24},
+            }
+        },
+    },
+
+    -- EPIC TIER: Legendary gear and rare items
+    epic = {
+        champion = {
+            name = "Champion's Glory",
+            items = {
+                {"diamond_sword", 1, 1},
+                {"helmet_diamond", 1, 1},
+                {"chestplate_diamond", 1, 1},
+                {"leggings_diamond", 1, 1},
+                {"boots_diamond", 1, 1},
+                {"shield", 1, 1},
+                {"golden_apple", 4, 6},
+                {"totem", 1, 1},
+            }
+        },
+        diamond_master = {
+            name = "Diamond Master's Cache",
+            items = {
+                {"diamondblock", 2, 4},
+                {"diamond_pick", 1, 1},
+                {"diamond_axe", 1, 1},
+                {"diamond_shovel", 1, 1},
+                {"diamond", 16, 24},
+                {"emeraldblock", 1, 2},
+                {"enchanted_book", 1, 2},
+            }
+        },
+        legendary = {
+            name = "Legendary Hoard",
+            items = {
+                {"diamondblock", 3, 5},
+                {"emeraldblock", 2, 4},
+                {"goldblock", 4, 8},
+                {"golden_apple", 6, 8},
+                {"ender_pearl", 4, 8},
+                {"name_tag", 2, 3},
+            }
+        },
+        adventurer_supreme = {
+            name = "Supreme Explorer's Set",
+            items = {
+                {"elytra", 1, 1},
+                {"ender_pearl", 8, 16},
+                {"compass", 1, 1},
+                {"spyglass", 1, 1},
+                {"diamond_sword", 1, 1},
+                {"boots_diamond", 1, 1},
+                {"golden_apple", 4, 6},
+                {"torch", 64, 64},
+            }
+        },
+    },
+}
+
+-- Detect game type (Mineclonia/VoxeLibre use mcl_ prefix)
+-- This function must be defined before generate_themed_loot which uses it
+local function get_item(item_type)
+    local items = {
+        -- Containers & Signs
+        chest = "mcl_chests:chest",
+        sign = "mcl_signs:wall_sign_dark_oak",
+
+        -- Raw Materials
+        diamond = "mcl_core:diamond",
+        gold = "mcl_core:gold_ingot",
+        iron = "mcl_core:iron_ingot",
+        emerald = "mcl_core:emerald",
+        coal = "mcl_core:coal_lump",
+        lapis = "mcl_core:lapis",
+        redstone = "mesecons:redstone",
+        copper = "mcl_copper:copper_ingot",
+
+        -- Blocks
+        goldblock = "mcl_core:goldblock",
+        diamondblock = "mcl_core:diamondblock",
+        ironblock = "mcl_core:ironblock",
+        emeraldblock = "mcl_core:emeraldblock",
+        cobble = "mcl_core:cobble",
+        obsidian = "mcl_core:obsidian",
+        glowstone = "mcl_nether:glowstone",
+
+        -- Tools - Stone
+        stone_pick = "mcl_tools:pick_stone",
+        stone_sword = "mcl_tools:sword_stone",
+        stone_axe = "mcl_tools:axe_stone",
+        stone_shovel = "mcl_tools:shovel_stone",
+
+        -- Tools - Iron
+        iron_sword = "mcl_tools:sword_iron",
+        iron_pick = "mcl_tools:pick_iron",
+        iron_axe = "mcl_tools:axe_iron",
+        iron_shovel = "mcl_tools:shovel_iron",
+
+        -- Tools - Diamond
+        diamond_sword = "mcl_tools:sword_diamond",
+        diamond_pick = "mcl_tools:pick_diamond",
+        diamond_axe = "mcl_tools:axe_diamond",
+        diamond_shovel = "mcl_tools:shovel_diamond",
+
+        -- Tools - Gold (fast but weak)
+        gold_pick = "mcl_tools:pick_gold",
+        gold_sword = "mcl_tools:sword_gold",
+
+        -- Armor - Leather
+        helmet_leather = "mcl_armor:helmet_leather",
+        chestplate_leather = "mcl_armor:chestplate_leather",
+        leggings_leather = "mcl_armor:leggings_leather",
+        boots_leather = "mcl_armor:boots_leather",
+
+        -- Armor - Iron
+        helmet_iron = "mcl_armor:helmet_iron",
+        chestplate_iron = "mcl_armor:chestplate_iron",
+        leggings_iron = "mcl_armor:leggings_iron",
+        boots_iron = "mcl_armor:boots_iron",
+
+        -- Armor - Gold
+        helmet_gold = "mcl_armor:helmet_gold",
+        chestplate_gold = "mcl_armor:chestplate_gold",
+        leggings_gold = "mcl_armor:leggings_gold",
+        boots_gold = "mcl_armor:boots_gold",
+
+        -- Armor - Diamond
+        helmet_diamond = "mcl_armor:helmet_diamond",
+        chestplate_diamond = "mcl_armor:chestplate_diamond",
+        leggings_diamond = "mcl_armor:leggings_diamond",
+        boots_diamond = "mcl_armor:boots_diamond",
+
+        -- Food
+        bread = "mcl_farming:bread",
+        apple = "mcl_core:apple",
+        golden_apple = "mcl_core:apple_gold",
+        cooked_beef = "mcl_mobitems:cooked_beef",
+        cooked_pork = "mcl_mobitems:cooked_porkchop",
+        cooked_chicken = "mcl_mobitems:cooked_chicken",
+        cookie = "mcl_farming:cookie",
+        cake = "mcl_cake:cake",
+        carrot = "mcl_farming:carrot_item",
+        potato_baked = "mcl_farming:potato_item_baked",
+
+        -- Combat
+        bow = "mcl_bows:bow",
+        arrow = "mcl_bows:arrow",
+        crossbow = "mcl_bows:crossbow",
+        shield = "mcl_shields:shield",
+
+        -- Exploration & Utility
+        torch = "mcl_torches:torch",
+        compass = "mcl_compass:compass",
+        map = "mcl_maps:empty_map",
+        clock = "mcl_clock:clock",
+        spyglass = "mcl_spyglass:spyglass",
+        bucket = "mcl_buckets:bucket_empty",
+        water_bucket = "mcl_buckets:bucket_water",
+        fishing_rod = "mcl_fishing:fishing_rod",
+        lead = "mcl_mobs:lead",
+        saddle = "mcl_mobitems:saddle",
+
+        -- Building & Farming
+        ladder = "mcl_core:ladder",
+        fence = "mcl_fences:fence",
+        glass = "mcl_core:glass",
+        bookshelf = "mcl_books:bookshelf",
+        seeds_wheat = "mcl_farming:wheat_seeds",
+        seeds_melon = "mcl_farming:melon_seeds",
+        seeds_pumpkin = "mcl_farming:pumpkin_seeds",
+        bone_meal = "mcl_bone_meal:bone_meal",
+        hoe_iron = "mcl_farming:hoe_iron",
+
+        -- Special/Rare
+        ender_pearl = "mcl_throwing:ender_pearl",
+        blaze_rod = "mcl_mobitems:blaze_rod",
+        nether_star = "mcl_mobitems:nether_star",
+        totem = "mcl_totems:totem",
+        elytra = "mcl_armor:elytra",
+        name_tag = "mcl_mobs:nametag",
+        enchanted_book = "mcl_enchanting:book_enchanted",
+    }
+    return items[item_type] or item_type
+end
+
+-- Function to select a random kit for a tier and generate loot
+local function generate_themed_loot(tier)
+    local tier_kits = THEMED_LOOT_KITS[tier]
+    if not tier_kits then
+        minetest.log("warning", "[quest_helper] No kits defined for tier: " .. tostring(tier))
+        return {}, "Unknown"
+    end
+
+    -- Get all kit names for this tier
+    local kit_names = {}
+    for kit_name, _ in pairs(tier_kits) do
+        table.insert(kit_names, kit_name)
+    end
+
+    -- Select random kit
+    local selected_kit_name = kit_names[math.random(#kit_names)]
+    local selected_kit = tier_kits[selected_kit_name]
+
+    -- Generate loot with randomized quantities
+    local loot = {}
+    for _, item_def in ipairs(selected_kit.items) do
+        local item_name = item_def[1]
+        local min_count = item_def[2]
+        local max_count = item_def[3]
+        local count = math.random(min_count, max_count)
+        table.insert(loot, {get_item(item_name), count})
+    end
+
+    minetest.log("action", "[quest_helper] Generated " .. selected_kit.name .. " kit for " .. tier .. " tier")
+    return loot, selected_kit.name
+end
+
 -- Track HUD elements per player
 local player_hud_ids = {}
 
@@ -307,39 +678,6 @@ local function parse_y_coord(y_str, x, z)
     else
         return tonumber(y_str)
     end
-end
-
--- Detect game type (Mineclonia/VoxeLibre use mcl_ prefix)
-local function get_item(item_type)
-    local items = {
-        chest = "mcl_chests:chest",
-        sign = "mcl_signs:wall_sign_dark_oak",
-        diamond = "mcl_core:diamond",
-        gold = "mcl_core:gold_ingot",
-        iron = "mcl_core:iron_ingot",
-        emerald = "mcl_core:emerald",
-        diamond_sword = "mcl_tools:sword_diamond",
-        diamond_pick = "mcl_tools:pick_diamond",
-        iron_sword = "mcl_tools:sword_iron",
-        iron_pick = "mcl_tools:pick_iron",
-        bread = "mcl_farming:bread",
-        apple = "mcl_core:apple",
-        torch = "mcl_torches:torch",
-        compass = "mcl_compass:compass",
-        map = "mcl_maps:empty_map",
-        helmet_diamond = "mcl_armor:helmet_diamond",
-        chestplate_diamond = "mcl_armor:chestplate_diamond",
-        leggings_diamond = "mcl_armor:leggings_diamond",
-        boots_diamond = "mcl_armor:boots_diamond",
-        helmet_iron = "mcl_armor:helmet_iron",
-        chestplate_iron = "mcl_armor:chestplate_iron",
-        leggings_iron = "mcl_armor:leggings_iron",
-        boots_iron = "mcl_armor:boots_iron",
-        goldblock = "mcl_core:goldblock",
-        diamondblock = "mcl_core:diamondblock",
-        cobble = "mcl_core:cobble",
-    }
-    return items[item_type] or item_type
 end
 
 -- /starterkit <player> - Give basic survival kit
@@ -1630,9 +1968,30 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
             meta:set_int("unlocked_" .. player_name, 1)
             puzzle_attempts[attempt_key] = nil  -- Reset attempts
 
+            -- Generate themed loot kit for this player
+            local tier = meta:get_string("tier")
+            local loot, kit_name = generate_themed_loot(tier)
+
+            -- Add loot items to chest inventory
+            local inv = meta:get_inventory()
+            for _, item in ipairs(loot) do
+                if item[1] and item[2] then
+                    inv:add_item("main", item[1] .. " " .. item[2])
+                end
+            end
+
+            -- Store kit name for reference
+            meta:set_string("kit_name", kit_name)
+
+            -- Tell player what kit they received
+            minetest.chat_send_player(player_name,
+                minetest.colorize("#FFD700", "*** You received: " .. kit_name .. "! ***"))
+
+            minetest.log("action", "[quest_helper] " .. player_name .. " solved " .. tier ..
+                " puzzle chest and received " .. kit_name)
+
             -- Award points (skip admins)
             if not is_admin(player_name) then
-                local tier = meta:get_string("tier")
                 local points = TIER_POINTS[tier] or TIER_POINTS["medium"]  -- Default to medium if tier not set
 
                 local new_total = add_player_score(player_name, points)
@@ -1651,7 +2010,6 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 
             -- Start solved chest timeout timer
             -- If player doesn't collect all items, chest will vanish and drop remaining items
-            local tier = meta:get_string("tier")
             local timeout = SOLVED_CHEST_TIMEOUT[tier] or SOLVED_CHEST_TIMEOUT["medium"]
             local pos_copy = vector.copy(pos)
             local node_name = "quest_helper:puzzle_chest_" .. tier
@@ -1876,59 +2234,9 @@ minetest.register_chatcommand("puzzlechest", {
             meta:set_string("tier", tier_lower)  -- Store tier for point calculation
             meta:set_string("infotext", tier_config.infotext)
 
-            -- Add loot based on tier
-            local loot = {}
-
-            if tier_lower == "small" then
-                loot = {
-                    {get_item("iron"), math.random(3, 8)},
-                    {get_item("bread"), math.random(4, 10)},
-                    {get_item("torch"), math.random(8, 16)},
-                }
-            elseif tier_lower == "medium" then
-                loot = {
-                    {get_item("iron"), math.random(8, 16)},
-                    {get_item("gold"), math.random(4, 8)},
-                    {get_item("diamond"), math.random(1, 3)},
-                    {get_item("bread"), math.random(8, 16)},
-                    {get_item("iron_sword"), 1},
-                }
-            elseif tier_lower == "big" then
-                loot = {
-                    {get_item("gold"), math.random(16, 32)},
-                    {get_item("diamond"), math.random(4, 8)},
-                    {get_item("emerald"), math.random(2, 5)},
-                    {get_item("diamond_sword"), 1},
-                    {get_item("diamond_pick"), 1},
-                }
-            elseif tier_lower == "epic" then
-                loot = {
-                    {get_item("diamondblock"), math.random(2, 5)},
-                    {get_item("emerald"), math.random(8, 16)},
-                    {get_item("diamond_sword"), 1},
-                    {get_item("diamond_pick"), 1},
-                    {get_item("helmet_diamond"), 1},
-                    {get_item("chestplate_diamond"), 1},
-                    {get_item("leggings_diamond"), 1},
-                    {get_item("boots_diamond"), 1},
-                }
-            else
-                -- Default to medium if tier not recognized
-                loot = {
-                    {get_item("iron"), math.random(8, 16)},
-                    {get_item("gold"), math.random(4, 8)},
-                    {get_item("diamond"), math.random(1, 3)},
-                    {get_item("bread"), math.random(8, 16)},
-                    {get_item("iron_sword"), 1},
-                }
-            end
-
-            -- Add items to chest
-            for _, item in ipairs(loot) do
-                if item[1] and item[2] then
-                    inv:add_item("main", item[1] .. " " .. item[2])
-                end
-            end
+            -- NOTE: Loot is NOT added at creation time
+            -- Themed loot kit is randomly generated when player solves the puzzle
+            -- This provides variety - each solver gets a different random kit
 
             minetest.log("action", "[quest_helper] Puzzle chest loot added at " .. minetest.pos_to_string(pos))
         end)
@@ -2611,48 +2919,9 @@ minetest.register_on_punchnode(function(pos, node, puncher, pointed_thing)
     meta:set_string("tier", tier)
     meta:set_string("infotext", tier_config.infotext)
 
-    -- Add loot based on tier
-    local loot = {}
-    if tier == "small" then
-        loot = {
-            {get_item("iron"), math.random(3, 8)},
-            {get_item("bread"), math.random(4, 10)},
-            {get_item("torch"), math.random(8, 16)},
-        }
-    elseif tier == "medium" then
-        loot = {
-            {get_item("iron"), math.random(8, 16)},
-            {get_item("gold"), math.random(4, 8)},
-            {get_item("diamond"), math.random(1, 3)},
-            {get_item("bread"), math.random(8, 16)},
-            {get_item("iron_sword"), 1},
-        }
-    elseif tier == "big" then
-        loot = {
-            {get_item("gold"), math.random(16, 32)},
-            {get_item("diamond"), math.random(4, 8)},
-            {get_item("emerald"), math.random(2, 5)},
-            {get_item("diamond_sword"), 1},
-            {get_item("diamond_pick"), 1},
-        }
-    elseif tier == "epic" then
-        loot = {
-            {get_item("diamondblock"), math.random(2, 5)},
-            {get_item("emerald"), math.random(8, 16)},
-            {get_item("diamond_sword"), 1},
-            {get_item("diamond_pick"), 1},
-            {get_item("helmet_diamond"), 1},
-            {get_item("chestplate_diamond"), 1},
-            {get_item("leggings_diamond"), 1},
-            {get_item("boots_diamond"), 1},
-        }
-    end
-
-    for _, item in ipairs(loot) do
-        if item[1] and item[2] then
-            inv:add_item("main", item[1] .. " " .. item[2])
-        end
-    end
+    -- NOTE: Loot is NOT added at creation time
+    -- Themed loot kit is randomly generated when player solves the puzzle
+    -- This provides variety - each solver gets a different random kit
 
     -- Play placement sound
     minetest.sound_play("default_place_node", {pos = place_pos, gain = 0.5}, true)
@@ -2982,48 +3251,9 @@ local function place_scatter_chest(pos, mode, player_name)
     meta:set_string("tier", tier)
     meta:set_string("infotext", tier_config.infotext)
 
-    -- Add loot based on tier
-    local loot = {}
-    if tier == "small" then
-        loot = {
-            {get_item("iron"), math.random(3, 8)},
-            {get_item("bread"), math.random(4, 10)},
-            {get_item("torch"), math.random(8, 16)},
-        }
-    elseif tier == "medium" then
-        loot = {
-            {get_item("iron"), math.random(8, 16)},
-            {get_item("gold"), math.random(4, 8)},
-            {get_item("diamond"), math.random(1, 3)},
-            {get_item("bread"), math.random(8, 16)},
-            {get_item("iron_sword"), 1},
-        }
-    elseif tier == "big" then
-        loot = {
-            {get_item("gold"), math.random(16, 32)},
-            {get_item("diamond"), math.random(4, 8)},
-            {get_item("emerald"), math.random(2, 5)},
-            {get_item("diamond_sword"), 1},
-            {get_item("diamond_pick"), 1},
-        }
-    elseif tier == "epic" then
-        loot = {
-            {get_item("diamondblock"), math.random(2, 5)},
-            {get_item("emerald"), math.random(8, 16)},
-            {get_item("diamond_sword"), 1},
-            {get_item("diamond_pick"), 1},
-            {get_item("helmet_diamond"), 1},
-            {get_item("chestplate_diamond"), 1},
-            {get_item("leggings_diamond"), 1},
-            {get_item("boots_diamond"), 1},
-        }
-    end
-
-    for _, item in ipairs(loot) do
-        if item[1] and item[2] then
-            inv:add_item("main", item[1] .. " " .. item[2])
-        end
-    end
+    -- NOTE: Loot is NOT added at creation time
+    -- Themed loot kit is randomly generated when player solves the puzzle
+    -- This provides variety - each solver gets a different random kit
 
     return true, tier
 end
